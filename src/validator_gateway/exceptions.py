@@ -3,11 +3,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+# Every DomainError subclass's `code` is tracked here the moment the class is
+# defined (via __init_subclass__ below), independent of whether it has its
+# own distinct entry in _STATUS_MAP. This matters because a subclass like
+# AlreadyExistsError deliberately has NO explicit _STATUS_MAP entry — it
+# inherits ConflictError's mapping via the MRO walk in resolve_status() — but
+# "already_exists" must still be a known code for known_codes()/is_retryable()/
+# status_for_code(), or policy validation and status lookups would wrongly
+# treat it as unrecognized and fall back to a generic 500.
+_CODE_TO_TYPE: dict[str, type[DomainError]] = {}
+
 
 class DomainError(Exception):
     code: str = "domain_error"
     default_message: str = "A domain error occurred."
     retryable: bool = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _CODE_TO_TYPE[cls.code] = cls
 
     def __init__(
         self,
@@ -20,6 +34,9 @@ class DomainError(Exception):
         self.details: dict[str, Any] = details or {}
         self.cause = cause
         super().__init__(self.message)
+
+
+_CODE_TO_TYPE[DomainError.code] = DomainError
 
 
 class ValidationFailedError(DomainError):
@@ -94,17 +111,10 @@ _STATUS_MAP: dict[type[DomainError], StatusMapping] = {
     UpstreamServiceError: StatusMapping(502, "UNAVAILABLE"),
 }
 
-_KNOWN_CODES: set[str] = {exc_type.code for exc_type in _STATUS_MAP}
-_CODE_TO_TYPE: dict[str, type[DomainError]] = {
-    exc_type.code: exc_type for exc_type in _STATUS_MAP
-}
-
-
 def register_status_mapping(
     exc_type: type[DomainError], http_status: int, grpc_status: str
 ) -> None:
     _STATUS_MAP[exc_type] = StatusMapping(http_status, grpc_status)
-    _KNOWN_CODES.add(exc_type.code)
     _CODE_TO_TYPE[exc_type.code] = exc_type
 
 
@@ -137,4 +147,4 @@ def status_for_code(code: str) -> StatusMapping:
 
 
 def known_codes() -> set[str]:
-    return set(_KNOWN_CODES)
+    return set(_CODE_TO_TYPE)

@@ -169,6 +169,52 @@ async def test_retry_then_redirect_chain_returns_redirect_result(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_redirect_raising_domain_error_continues_to_next_step(tmp_path):
+    path = tmp_path / "validator_gateway.json"
+    path.write_text(
+        json.dumps(
+            {
+                "upstream_error": [
+                    {"action": "redirect", "redirect": {"target": "also_fails"}},
+                    {"action": "redirect", "redirect": {"target": "degraded_create_user"}},
+                ]
+            }
+        )
+    )
+    engine = RecoveryEngine(policy_store=JSONFilePolicyStore(path))
+    controller = AlwaysFailsController()
+    gateway = ValidatorGateway(controller, recovery=engine)
+
+    async def also_fails():
+        raise UpstreamServiceError("fallback also failed")
+
+    async def degraded():
+        return {"degraded": True}
+
+    gateway.register_fallback("also_fails", also_fails)
+    gateway.register_fallback("degraded_create_user", degraded)
+
+    resp = await gateway.handle(gateway.controller.do_work)
+    assert resp.status == "success"
+    assert resp.data == {"degraded": True}
+
+
+@pytest.mark.asyncio
+async def test_fail_step_stops_the_chain_immediately(tmp_path):
+    path = tmp_path / "validator_gateway.json"
+    path.write_text(json.dumps({"upstream_error": [{"action": "fail"}]}))
+    engine = RecoveryEngine(policy_store=JSONFilePolicyStore(path))
+    controller = AlwaysFailsController()
+    gateway = ValidatorGateway(controller, recovery=engine)
+
+    resp = await gateway.handle(gateway.controller.do_work)
+    assert resp.status == "error"
+    assert resp.error.code == "upstream_error"
+    # FAIL raises immediately, no retry/redirect attempted beyond the initial call.
+    assert controller.calls == 1
+
+
+@pytest.mark.asyncio
 async def test_no_fail_step_reraises_original_exception(tmp_path):
     path = tmp_path / "validator_gateway.json"
     path.write_text(

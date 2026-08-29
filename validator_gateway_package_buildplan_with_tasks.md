@@ -514,7 +514,7 @@ This phase is what lets workers and agents call `handle()` directly and get auto
 
 ## Phase 7 — OpenAPI Extension Tooling
 
-- [ ] **P7-T1: Model registry**
+- [x] **P7-T1: Model registry**
   **Do:** `ModelRegistry` (likely a classmethod-based registry on a small class, or a module-level singleton with a clear reset-for-tests function) mapping `(method, path) -> request_model type`, populated via a decorator:
   ```python
   @registry.register("POST", "/users", CreateUserRequest)
@@ -523,17 +523,17 @@ This phase is what lets workers and agents call `handle()` directly and get auto
   **File(s):** `src/validator_gateway/registry.py`
   **Acceptance:** Registering two different models against the same `(method, path)` raises a clear error (fail loud on accidental duplicate registration) unless an explicit `overwrite=True` is passed.
 
-- [ ] **P7-T2: `openapi_extra` injection helper (Level 2 integration)**
+- [x] **P7-T2: `openapi_extra` injection helper (Level 2 integration)**
   **Do:** `apply_registry_to_route(route: APIRoute, registry: ModelRegistry) -> None` that sets `route.openapi_extra["requestBody"]` from the registered model's `model_json_schema()`.
   **File(s):** `src/validator_gateway/fastapi_integration/openapi.py`
   **Acceptance:** After calling this on a thin route with a request body that FastAPI otherwise couldn't introspect, `app.openapi()["paths"]["/users"]["post"]["requestBody"]` contains the correct schema.
 
-- [ ] **P7-T3: Full custom `app.openapi()` builder (Level 3 integration)**
+- [x] **P7-T3: Full custom `app.openapi()` builder (Level 3 integration)**
   **Do:** `build_custom_openapi(app: FastAPI, registry: ModelRegistry) -> dict`, using `pydantic.json_schema.models_json_schema()` (not per-model `.model_json_schema()` calls) to dedupe shared `$defs` and avoid ref collisions, matching FastAPI's `#/components/schemas/{model}` ref template.
   **File(s):** `src/validator_gateway/fastapi_integration/openapi.py`
   **Acceptance:** Two registered models sharing a nested submodel produce one `$defs` entry, not two; generated schema validates as OpenAPI 3.1 (use a lightweight validator like `openapi-spec-validator` in the test's dev-only dependency, or a hand-rolled structural check if avoiding the extra dependency).
 
-- [ ] **P7-T4: Error-response schema in OpenAPI**
+- [x] **P7-T4: Error-response schema in OpenAPI**
   **Do:** Ensure every registered path's OpenAPI operation includes `ErrorResponse` as the schema for its documented non-2xx responses (400/401/403/404/409/422/429/500 etc., per which `DomainError` subclasses the endpoint's controller method is documented to raise — add an optional `raises: list[type[DomainError]]` param to the `@registry.register` decorator for this purpose).
   **File(s):** `src/validator_gateway/registry.py`, `src/validator_gateway/fastapi_integration/openapi.py`
   **Acceptance:** A route registered with `raises=[NotFoundError, ConflictError]` shows `404` and `409` response schemas (both referencing `ErrorResponse`) in the generated OpenAPI doc.
@@ -542,10 +542,10 @@ This phase is what lets workers and agents call `handle()` directly and get auto
 
 ## Phase 8 — Test Suite Completion
 
-- [ ] **P8-T1: Unit test coverage ≥ 90%** across `exceptions.py`, `gateway.py`, `responses.py`, `config.py`, `logging.py`, `controller.py`, and everything under `recovery/`.
-- [ ] **P8-T2: Integration test app** under `tests/` (separate from `examples/`) exercising a full request lifecycle: route → gateway → controller → service → repository (in-memory fake) → back through error/success formatting, for at least one success path and one path per major `DomainError` subclass.
-- [ ] **P8-T3: Enforcement tests** — a dedicated `tests/test_enforcement.py` proving the "can't bypass the gateway" guarantees from P2-T3 and P6-T3 with adversarial/misuse-style test cases (wrong controller's method, sync method passed where async expected, calling `handle()` before construction completes, etc.).
-- [ ] **P8-T4: Recovery engine coverage** — `tests/test_recovery.py` must cover: a full retry→redirect→queue chain where each step is exercised in order; a non-retryable code rejected at policy-load time; an unregistered redirect target rejected with a clear error rather than silently falling through; the `max_total_steps` guard actually terminating a pathological policy; and a REST-style gateway (`recovery=None`) provably making zero extra calls compared to a worker-style gateway (`recovery=RecoveryEngine(...)`) against the same failing controller method.
+- [x] **P8-T1: Unit test coverage ≥ 90%** across `exceptions.py`, `gateway.py`, `responses.py`, `config.py`, `logging.py`, `controller.py`, and everything under `recovery/`.
+- [x] **P8-T2: Integration test app** under `tests/` (separate from `examples/`) exercising a full request lifecycle: route → gateway → controller → service → repository (in-memory fake) → back through error/success formatting, for at least one success path and one path per major `DomainError` subclass.
+- [x] **P8-T3: Enforcement tests** — a dedicated `tests/test_enforcement.py` proving the "can't bypass the gateway" guarantees from P2-T3 and P6-T3 with adversarial/misuse-style test cases (wrong controller's method, sync method passed where async expected, calling `handle()` before construction completes, etc.).
+- [x] **P8-T4: Recovery engine coverage** — `tests/test_recovery.py` must cover: a full retry→redirect→queue chain where each step is exercised in order; a non-retryable code rejected at policy-load time; an unregistered redirect target rejected with a clear error rather than silently falling through; the `max_total_steps` guard actually terminating a pathological policy; and a REST-style gateway (`recovery=None`) provably making zero extra calls compared to a worker-style gateway (`recovery=RecoveryEngine(...)`) against the same failing controller method.
 
 **Acceptance for the whole phase:** `pytest --cov` passes at ≥90% with no `# pragma: no cover` used to fake the number; CI (P0-T4) is green.
 

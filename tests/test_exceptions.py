@@ -10,6 +10,7 @@ from validator_gateway.exceptions import (
     UnprocessableError,
     UpstreamServiceError,
     ValidationFailedError,
+    is_retryable,
     known_codes,
     register_status_mapping,
     resolve_status,
@@ -63,6 +64,19 @@ def test_subclasses_instantiate_with_defaults(exc_type):
     assert err.message == exc_type.default_message
 
 
+def test_subclass_with_no_dedicated_status_map_entry_is_still_known():
+    # AlreadyExistsError deliberately has no explicit _STATUS_MAP entry — it
+    # inherits ConflictError's mapping via the MRO walk — but its own code
+    # must still be tracked, or known_codes()/is_retryable()/status_for_code()
+    # would treat "already_exists" as unrecognized and silently fall back to
+    # a generic 500 instead of ConflictError's 409.
+    from validator_gateway.exceptions import status_for_code
+
+    assert "already_exists" in known_codes()
+    assert is_retryable("already_exists") is True
+    assert status_for_code("already_exists") == resolve_status(ConflictError())
+
+
 def test_already_exists_is_a_conflict():
     err = AlreadyExistsError()
     assert isinstance(err, AlreadyExistsError)
@@ -102,6 +116,11 @@ def test_register_status_mapping_and_known_codes():
     mapping = resolve_status(CustomError())
     assert mapping.http_status == 418
     assert "custom_error" in known_codes()
+
+
+def test_is_retryable_unknown_code_raises_key_error():
+    with pytest.raises(KeyError, match="not_a_real_code"):
+        is_retryable("not_a_real_code")
 
 
 def test_retryable_classification():

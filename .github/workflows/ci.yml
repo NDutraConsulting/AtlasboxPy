@@ -44,4 +44,6 @@ jobs:
           # ModuleNotFoundError before any filtering happens.
           /tmp/core-only-venv/bin/pytest tests/ \
             --ignore=tests/test_fastapi_integration.py \
-            --ignore=tests/test_openapi_registry.py
+            --ignore=tests/test_openapi_registry.py \
+            --ignore=tests/test_integration.py \
+            --ignore=tests/test_enforcement.py
