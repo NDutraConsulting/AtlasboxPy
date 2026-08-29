@@ -15,6 +15,7 @@ from validator_gateway.exceptions import (
     known_codes,
     register_status_mapping,
     resolve_status,
+    status_for_code,
 )
 from validator_gateway.gateway import ValidatorGateway
 from validator_gateway.logging import ExceptionHook, chain_hooks, default_logging_hook
@@ -45,5 +46,6 @@ __all__ = [
     "known_codes",
     "register_status_mapping",
     "resolve_status",
+    "status_for_code",
     "validate_controller",
 ]

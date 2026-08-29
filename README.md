@@ -116,11 +116,13 @@ Attach a `RecoveryEngine` and the same controller can retry on transient failure
 ### 5. Use it from anywhere else (gRPC, CLI, agent tool call)
 
 ```python
+from validator_gateway import ValidatorGateway, status_for_code
+
 gateway = ValidatorGateway(controller=UserController(user_service))
 result = await gateway.handle(gateway.controller.get_user, request.user_id)
 
 if result.status == "error":
-    context.set_code(resolve_status_from_code(result.error.code).grpc_status)
+    context.set_code(status_for_code(result.error.code).grpc_status)
 ```
 
 The core package has no dependency on FastAPI or any other framework, so this works the same way regardless of what's calling it.
