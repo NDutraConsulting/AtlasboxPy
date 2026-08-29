@@ -30,6 +30,7 @@ from .models import (
     CreateCardRequest,
     CreateColumnRequest,
     MoveCardRequest,
+    SimulateDbErrorRequest,
     UpdateCardRequest,
 )
 from .services import KanbanService
@@ -116,6 +117,23 @@ async def move_card(
 @router.delete("/cards/{card_id}")
 async def delete_card(card_id: str, gateway: BoardValidatorGateway = Depends(get_board_gateway)):
     return await handle_and_log(gateway, gateway.controller.delete_card, card_id)
+
+
+@router.post("/debug/db-connection")
+async def set_db_connection_simulation(payload: SimulateDbErrorRequest) -> dict:
+    """Test-only utility — deliberately NOT routed through a
+    *ValidatorGateway, unlike every route above. Flipping a boolean isn't
+    domain logic, so there's no controller for it; this exists purely so
+    you can simulate "the database is down" (every KanbanService call then
+    raises UpstreamServiceError) to exercise that failure path on demand,
+    e.g.:
+
+        curl -X POST localhost:8000/api/debug/db-connection -d '{"enabled": true}'
+        curl -X POST localhost:8000/api/boards -d '{"name": "x"}'   # -> 502
+        curl -X POST localhost:8000/api/debug/db-connection -d '{"enabled": false}'
+    """
+    service.set_simulate_db_error(payload.enabled)
+    return {"simulate_db_error": payload.enabled}
 
 
 app.include_router(router)

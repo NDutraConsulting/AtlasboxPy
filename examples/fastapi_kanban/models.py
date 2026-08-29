@@ -24,6 +24,10 @@ class MoveCardRequest(BaseModel):
     column_id: str
 
 
+class SimulateDbErrorRequest(BaseModel):
+    enabled: bool
+
+
 class CardOut(BaseModel):
     id: str
     title: str

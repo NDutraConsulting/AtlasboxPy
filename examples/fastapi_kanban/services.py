@@ -1,10 +1,20 @@
 import uuid
 
-from validator_gateway import ConflictError, NotFoundError, ValidationFailedError
+from validator_gateway import (
+    ConflictError,
+    NotFoundError,
+    UpstreamServiceError,
+    ValidationFailedError,
+)
 
 from .models import BoardOut, BoardSummary, CardOut, ColumnOut
 
 DEFAULT_COLUMNS = ["To Do", "In Progress", "Done"]
+
+# Deliberately small, so it's easy to test the validation-error path (both
+# the backend rejecting it and the frontend displaying that rejection)
+# without having to type a paragraph first.
+MAX_CARD_TITLE_LENGTH = 10
 
 
 class _Card:
@@ -42,10 +52,23 @@ class KanbanService:
 
     def __init__(self) -> None:
         self._boards: dict[str, _Board] = {}
+        self._simulate_db_error = False
+
+    def set_simulate_db_error(self, enabled: bool) -> None:
+        """Test-only knob: while enabled, every method below raises
+        UpstreamServiceError before touching any data, standing in for a
+        real "the database connection is down" failure. Flipped via
+        POST /api/debug/db-connection — see main.py."""
+        self._simulate_db_error = enabled
+
+    def _check_db_connection(self) -> None:
+        if self._simulate_db_error:
+            raise UpstreamServiceError("Database connection failed (simulated)")
 
     # --- boards (the "boards" list feature) ---
 
     async def create_board(self, name: str) -> BoardOut:
+        self._check_db_connection()
         if not name.strip():
             raise ValidationFailedError("Board name must not be empty")
         board = _Board(id=str(uuid.uuid4()), name=name)
@@ -55,6 +78,7 @@ class KanbanService:
         return self._to_board_out(board)
 
     async def list_boards(self) -> list[BoardSummary]:
+        self._check_db_connection()
         return [
             BoardSummary(
                 id=board.id,
@@ -68,13 +92,16 @@ class KanbanService:
     # --- single board (the "board" detail feature) ---
 
     async def get_board(self, board_id: str) -> BoardOut:
+        self._check_db_connection()
         return self._to_board_out(self._require_board(board_id))
 
     async def delete_board(self, board_id: str) -> None:
+        self._check_db_connection()
         board = self._require_board(board_id)
         del self._boards[board.id]
 
     async def add_column(self, board_id: str, name: str) -> ColumnOut:
+        self._check_db_connection()
         board = self._require_board(board_id)
         if not name.strip():
             raise ValidationFailedError("Column name must not be empty")
@@ -84,6 +111,7 @@ class KanbanService:
         return ColumnOut(id=column.id, name=column.name, cards=[])
 
     async def delete_column(self, board_id: str, column_id: str) -> None:
+        self._check_db_connection()
         board = self._require_board(board_id)
         column = self._require_column(board, column_id)
         card_count = sum(1 for card in board.cards.values() if card.column_id == column_id)
@@ -98,10 +126,10 @@ class KanbanService:
     async def create_card(
         self, board_id: str, column_id: str, title: str, description: str
     ) -> CardOut:
+        self._check_db_connection()
         board = self._require_board(board_id)
         self._require_column(board, column_id)
-        if not title.strip():
-            raise ValidationFailedError("Card title must not be empty")
+        self._validate_title(title)
         card = _Card(
             id=str(uuid.uuid4()), title=title, description=description, column_id=column_id
         )
@@ -111,26 +139,37 @@ class KanbanService:
     async def update_card(
         self, card_id: str, title: str | None, description: str | None
     ) -> CardOut:
+        self._check_db_connection()
         _, card = self._require_card(card_id)
         if title is not None:
-            if not title.strip():
-                raise ValidationFailedError("Card title must not be empty")
+            self._validate_title(title)
             card.title = title
         if description is not None:
             card.description = description
         return self._to_card_out(card)
 
     async def move_card(self, card_id: str, column_id: str) -> CardOut:
+        self._check_db_connection()
         board, card = self._require_card(card_id)
         self._require_column(board, column_id)
         card.column_id = column_id
         return self._to_card_out(card)
 
     async def delete_card(self, card_id: str) -> None:
+        self._check_db_connection()
         board, card = self._require_card(card_id)
         del board.cards[card.id]
 
     # --- helpers ---
+
+    def _validate_title(self, title: str) -> None:
+        if not title.strip():
+            raise ValidationFailedError("Card title must not be empty")
+        if len(title) > MAX_CARD_TITLE_LENGTH:
+            raise ValidationFailedError(
+                f"Card title must be at most {MAX_CARD_TITLE_LENGTH} characters "
+                f"(got {len(title)})"
+            )
 
     def _add_column(self, board: _Board, name: str) -> _Column:
         column = _Column(id=str(uuid.uuid4()), name=name)

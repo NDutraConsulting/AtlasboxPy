@@ -101,9 +101,9 @@ def test_full_card_lifecycle_create_update_move_delete():
     card = created.json()["data"]
     assert card["column_id"] == todo_id
 
-    updated = client.patch(f"/api/cards/{card['id']}", json={"title": "Write great docs"})
+    updated = client.patch(f"/api/cards/{card['id']}", json={"title": "Doc final"})
     assert updated.status_code == 200
-    assert updated.json()["data"]["title"] == "Write great docs"
+    assert updated.json()["data"]["title"] == "Doc final"
     assert updated.json()["data"]["description"] == "Draft v1"  # untouched
 
     moved = client.post(f"/api/cards/{card['id']}/move", json={"column_id": doing_id})
@@ -178,3 +178,64 @@ def test_gateway_traffic_is_logged_success_and_error():
     assert 'request=["does-not-exist"]' in not_found_line
     assert '"status": "error"' in not_found_line
     assert '"code": "not_found"' in not_found_line
+
+
+def test_card_title_over_ten_characters_is_rejected():
+    client = TestClient(app)
+    board = _create_board(client)
+    column_id = board["columns"][0]["id"]
+
+    resp = client.post(
+        f"/api/boards/{board['id']}/cards",
+        json={"column_id": column_id, "title": "12345678901"},  # 11 chars
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "validation_failed"
+    assert "10 characters" in resp.json()["error"]["message"]
+
+
+def test_card_title_at_exactly_ten_characters_is_allowed():
+    client = TestClient(app)
+    board = _create_board(client)
+    column_id = board["columns"][0]["id"]
+
+    resp = client.post(
+        f"/api/boards/{board['id']}/cards",
+        json={"column_id": column_id, "title": "1234567890"},  # exactly 10
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["title"] == "1234567890"
+
+
+def test_updating_a_card_title_past_ten_characters_is_rejected():
+    client = TestClient(app)
+    board = _create_board(client)
+    column_id = board["columns"][0]["id"]
+    card = client.post(
+        f"/api/boards/{board['id']}/cards", json={"column_id": column_id, "title": "short"}
+    ).json()["data"]
+
+    resp = client.patch(f"/api/cards/{card['id']}", json={"title": "way too long"})
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "validation_failed"
+
+
+def test_simulate_db_error_toggle_causes_upstream_error_then_recovers():
+    client = TestClient(app)
+    try:
+        toggled_on = client.post("/api/debug/db-connection", json={"enabled": True})
+        assert toggled_on.status_code == 200
+        assert toggled_on.json() == {"simulate_db_error": True}
+
+        while_down = client.post("/api/boards", json={"name": "Should fail"})
+        assert while_down.status_code == 502
+        assert while_down.json()["error"]["code"] == "upstream_error"
+
+        # Reads are affected too, not just writes.
+        list_while_down = client.get("/api/boards")
+        assert list_while_down.status_code == 502
+    finally:
+        client.post("/api/debug/db-connection", json={"enabled": False})
+
+    recovered = client.post("/api/boards", json={"name": "Back online"})
+    assert recovered.status_code == 200
