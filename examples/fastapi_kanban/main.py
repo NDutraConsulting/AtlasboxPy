@@ -29,6 +29,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from validator_gateway.fastapi_integration import to_json_response
 
+from .logging_setup import configure_traffic_logging
 from .models import (
     CreateBoardRequest,
     CreateCardRequest,
@@ -40,6 +41,7 @@ from .models import (
 from .services import KanbanService
 from .validator_gateways import BoardValidatorGateway, BoardsValidatorGateway, SourceJson
 
+configure_traffic_logging()
 service = KanbanService()
 
 app = FastAPI(title="validator_gateway — Kanban example")

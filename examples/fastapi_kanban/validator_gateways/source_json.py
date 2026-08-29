@@ -5,9 +5,10 @@ from dataclasses import dataclass
 class SourceJson:
     """What every *ValidatorGateway in this demo requires its caller to
     declare about itself — not inferred, not defaulted. An api_route
-    passes its own real request path/method; a future worker or agent
-    caller would pass its own caller_type instead of "api_route" and
-    whatever url/method makes sense for it (e.g. a queue name).
+    passes its own real request path and REST method; a worker or agent
+    caller has no REST method at all, so `method` is optional (defaults to
+    None) — only `url` (or whatever identifies the call site: a queue
+    name, a job name) and `caller_type` are actually universal.
 
     This is what the traffic log tags every line with, so a log reader can
     tell which route (or worker, or agent) actually drove a given call —
@@ -15,8 +16,8 @@ class SourceJson:
     """
 
     url: str
-    method: str
     caller_type: str
+    method: str | None = None
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, str | None]:
         return {"url": self.url, "method": self.method, "caller_type": self.caller_type}
