@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kanban — Board</title>
+    <link rel="stylesheet" href="/features/shared/base.css" />
+    <link rel="stylesheet" href="/features/board/board.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a href="/" class="back-link">&larr; Boards</a>
+      <h1 id="board-title">Loading&hellip;</h1>
+    </header>
+    <main>
+      <p id="board-error" class="error" hidden></p>
+      <div id="columns" class="columns"></div>
+      <form id="add-column-form" class="add-column-form">
+        <input type="text" name="name" placeholder="New column name" required />
+        <button type="submit">Add column</button>
+      </form>
+    </main>
+
+    <dialog id="card-dialog">
+      <form id="card-form" method="dialog">
+        <h2 id="card-dialog-title">New card</h2>
+        <label>
+          Title
+          <input type="text" name="title" required />
+        </label>
+        <label>
+          Description
+          <textarea name="description" rows="3"></textarea>
+        </label>
+        <menu>
+          <button value="cancel" formmethod="dialog">Cancel</button>
+          <button value="default" type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script type="module" src="/features/board/board-controller.js"></script>
+  </body>
+</html>
