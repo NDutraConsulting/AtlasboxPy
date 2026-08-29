@@ -165,9 +165,11 @@ def test_gateway_traffic_is_logged_with_source_json_method_and_case():
     assert log_path.exists()
     lines = log_path.read_text().splitlines()
 
-    # The log file persists across the whole test session (other tests also
-    # create boards), so match on this test's own data, not just the method.
-    create_line = next(line for line in lines if "Logged board" in line)
+    # The log file persists across every test run, not just this session
+    # (a prior run may have created its own "Logged board" with a
+    # different id) — match on this run's own unique board id, searching
+    # from the most recent lines, so a stale entry can never be picked up.
+    create_line = next(line for line in reversed(lines) if board["id"] in line)
     assert '"url": "/api/boards"' in create_line
     assert '"method": "POST"' in create_line
     assert '"caller_type": "api_route"' in create_line
@@ -175,9 +177,8 @@ def test_gateway_traffic_is_logged_with_source_json_method_and_case():
     assert "case=success" in create_line
     assert 'request=[{"name": "Logged board"}]' in create_line
     assert '"status": "success"' in create_line
-    assert board["id"] in create_line  # the created board's id is in the logged response
 
-    not_found_line = next(line for line in lines if "does-not-exist" in line)
+    not_found_line = next(line for line in reversed(lines) if "does-not-exist" in line)
     assert '"url": "/api/boards/does-not-exist"' in not_found_line
     assert '"method": "GET"' in not_found_line
     assert "method=get_board" in not_found_line

@@ -621,6 +621,11 @@ Design goal: a developer should be able to run one command in a fresh project an
   **File(s):** `docs/quickstart.md`
   **Acceptance:** Section present and matches the actual CLI output/behavior from P11-T2/T3.
 
+- [x] **P11-T6: `validator-gateway add-feature <name>` — classifying-gateway scaffolding**
+  **Do:** A pattern proven out in `examples/fastapi_kanban` (per-feature `*ValidatorGateway` subclasses that override `handle()` with a visible `FailureCase` enum + `match/case`, redirect to another gateway, and a required `source_json` the caller declares) turned out valuable enough that hand-writing its boilerplate for every new feature was real friction. `add-feature <name> [--path PATH] [--force]` scaffolds `controllers/{name}_controller.py` + `validator_gateways/{name}_validator_gateway.py` for one feature, plus (once, shared, never overwritten by `--force`) `validator_gateways/classifying_validator_gateway.py` and `validator_gateways/source_json.py`. The generated `ClassifyingValidatorGateway` base is **not** a package export — same "not buried in the package" principle as `init`'s templates — it's generated into the caller's own project, fully editable.
+  **File(s):** `src/validator_gateway/cli.py`, `tests/test_cli.py`
+  **Acceptance:** `add-feature invoice` produces a gateway that imports cleanly and correctly classifies a `NotFoundError` as its `NOT_FOUND` case; running it twice for two different feature names reuses (never duplicates or overwrites) the shared base files; re-running for the same name without `--force` refuses and leaves hand-edits untouched; a non-snake_case name is rejected before anything is written.
+
 ---
 
 ## Phase 12 — FastAPI Demo Projects & Integration Testing
