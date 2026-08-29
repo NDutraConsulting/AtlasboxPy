@@ -3,8 +3,11 @@ is exercised manually via a browser and via a live uvicorn + curl pass —
 pytest here covers the validator_gateway-backed REST API and static-file
 serving, not DOM behavior."""
 
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 
+from examples.fastapi_kanban.logging_setup import _LOG_DIR
 from examples.fastapi_kanban.main import app
 
 
@@ -146,3 +149,18 @@ def test_static_feature_assets_are_served():
     assert js.status_code == 200
     css = client.get("/features/boards/boards.css")
     assert css.status_code == 200
+
+
+def test_gateway_traffic_is_logged_success_and_error():
+    """Every call through a gateway — not just failures — lands in
+    logs/{today}_validator_gateway.log (see logging_setup.handle_and_log)."""
+    client = TestClient(app)
+    board = _create_board(client)
+    client.get("/api/boards/does-not-exist")  # a failing call, on purpose
+
+    log_path = _LOG_DIR / f"{datetime.now().strftime('%Y-%m-%d')}_validator_gateway.log"
+    assert log_path.exists()
+    contents = log_path.read_text()
+    assert "BoardsController.create_board -> success" in contents
+    assert "BoardController.get_board -> error code=not_found" in contents
+    assert board["id"]  # sanity: the earlier call actually worked

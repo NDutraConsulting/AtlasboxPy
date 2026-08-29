@@ -5,8 +5,11 @@ frontend — one folder per feature/page, each holding its own CSS and a
 Run it with:
     pip install -e ".[fastapi]"
     uvicorn examples.fastapi_kanban.main:app --reload
+(or just ./run.sh from this directory)
 
-Then open http://127.0.0.1:8000/ in a browser.
+Then open http://127.0.0.1:8000/ in a browser. Every request that moves
+across the two gateways below is also logged to
+logs/{YYYY-mm-dd}_validator_gateway.log — see logging_setup.py.
 """
 
 from pathlib import Path
@@ -15,9 +18,10 @@ from fastapi import APIRouter, Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from validator_gateway import ValidatorGateway, default_logging_hook
-from validator_gateway.fastapi_integration import get_gateway_factory, to_json_response
+from validator_gateway.fastapi_integration import get_gateway_factory
 
 from .controllers import BoardController, BoardsController
+from .logging_setup import handle_and_log
 from .models import (
     CreateBoardRequest,
     CreateCardRequest,
@@ -47,26 +51,22 @@ board_gateway_dep = get_gateway_factory(
 async def create_board(
     payload: CreateBoardRequest, gateway: ValidatorGateway = Depends(boards_gateway_dep)
 ):
-    result = await gateway.handle(gateway.controller.create_board, payload)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.create_board, payload)
 
 
 @router.get("/boards")
 async def list_boards(gateway: ValidatorGateway = Depends(boards_gateway_dep)):
-    result = await gateway.handle(gateway.controller.list_boards)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.list_boards)
 
 
 @router.get("/boards/{board_id}")
 async def get_board(board_id: str, gateway: ValidatorGateway = Depends(board_gateway_dep)):
-    result = await gateway.handle(gateway.controller.get_board, board_id)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.get_board, board_id)
 
 
 @router.delete("/boards/{board_id}")
 async def delete_board(board_id: str, gateway: ValidatorGateway = Depends(board_gateway_dep)):
-    result = await gateway.handle(gateway.controller.delete_board, board_id)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.delete_board, board_id)
 
 
 @router.post("/boards/{board_id}/columns")
@@ -75,46 +75,40 @@ async def add_column(
     payload: CreateColumnRequest,
     gateway: ValidatorGateway = Depends(board_gateway_dep),
 ):
-    result = await gateway.handle(gateway.controller.add_column, board_id, payload)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.add_column, board_id, payload)
 
 
 @router.delete("/boards/{board_id}/columns/{column_id}")
 async def delete_column(
     board_id: str, column_id: str, gateway: ValidatorGateway = Depends(board_gateway_dep)
 ):
-    result = await gateway.handle(gateway.controller.delete_column, board_id, column_id)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.delete_column, board_id, column_id)
 
 
 @router.post("/boards/{board_id}/cards")
 async def create_card(
     board_id: str, payload: CreateCardRequest, gateway: ValidatorGateway = Depends(board_gateway_dep)
 ):
-    result = await gateway.handle(gateway.controller.create_card, board_id, payload)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.create_card, board_id, payload)
 
 
 @router.patch("/cards/{card_id}")
 async def update_card(
     card_id: str, payload: UpdateCardRequest, gateway: ValidatorGateway = Depends(board_gateway_dep)
 ):
-    result = await gateway.handle(gateway.controller.update_card, card_id, payload)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.update_card, card_id, payload)
 
 
 @router.post("/cards/{card_id}/move")
 async def move_card(
     card_id: str, payload: MoveCardRequest, gateway: ValidatorGateway = Depends(board_gateway_dep)
 ):
-    result = await gateway.handle(gateway.controller.move_card, card_id, payload)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.move_card, card_id, payload)
 
 
 @router.delete("/cards/{card_id}")
 async def delete_card(card_id: str, gateway: ValidatorGateway = Depends(board_gateway_dep)):
-    result = await gateway.handle(gateway.controller.delete_card, card_id)
-    return to_json_response(result)
+    return await handle_and_log(gateway, gateway.controller.delete_card, card_id)
 
 
 app.include_router(router)
