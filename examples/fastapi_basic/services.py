@@ -3,7 +3,10 @@ import uuid
 from validator_gateway import AlreadyExistsError, NotFoundError
 from validator_gateway.fastapi_integration import extract_patch_data
 
+from .exceptions import UsernameReservedError
 from .models import CreateUserRequest, UpdateUserRequest, UserOut
+
+_RESERVED_NAMES = {"admin", "root"}
 
 
 class UserService:
@@ -16,6 +19,8 @@ class UserService:
         self._users: dict[str, dict] = {}
 
     async def create_user(self, payload: CreateUserRequest) -> UserOut:
+        if payload.name.lower() in _RESERVED_NAMES:
+            raise UsernameReservedError(f"{payload.name!r} is a reserved username")
         if any(u["email"] == payload.email for u in self._users.values()):
             raise AlreadyExistsError(f"A user with email {payload.email} already exists")
         user_id = str(uuid.uuid4())

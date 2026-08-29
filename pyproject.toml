@@ -39,6 +39,12 @@ packages = ["src/validator_gateway"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# examples/ includes CLI-generated content (Phase 11's `validator-gateway
+# init` templates) that must stay byte-for-byte what the CLI actually
+# produces — it isn't hand-formatted to this repo's own lint config, and a
+# real scaffolded project wouldn't inherit this config anyway. Demo
+# correctness is enforced by pytest (Phase 12), not by ruff/mypy here.
+extend-exclude = ["examples"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

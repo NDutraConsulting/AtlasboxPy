@@ -627,22 +627,22 @@ Design goal: a developer should be able to run one command in a fresh project an
 
 Phase 9's `examples/` prove the package *can* be wired up; this phase proves it stays wired up — each demo project gets its own real test suite, run in CI, so a regression in the core package is caught against realistic FastAPI usage, not just unit tests against the package in isolation.
 
-- [ ] **P12-T1: Test `examples/fastapi_basic` end-to-end**
+- [x] **P12-T1: Test `examples/fastapi_basic` end-to-end**
   **Do:** Add `examples/fastapi_basic/tests/test_api.py` using `fastapi.testclient.TestClient` against the example app itself (not a synthetic test app). Cover: the success path for each CRUD operation, and one HTTP request per `DomainError` subclass raised by the example's controller, asserting both the HTTP status (via P1-T3's mapping) and the `ErrorResponse` JSON shape.
   **File(s):** `examples/fastapi_basic/tests/test_api.py`
   **Acceptance:** `pytest examples/fastapi_basic` passes standalone (only requires the `[fastapi]` extra, not `[dev]`).
 
-- [ ] **P12-T2: New demo — `examples/fastapi_scaffolded/`**
+- [x] **P12-T2: New demo — `examples/fastapi_scaffolded/`**
   **Do:** A demo project built by actually running `validator-gateway init` (Phase 11) inside `examples/fastapi_scaffolded/`, then filling in the generated `controllers/` and `validator_gateways/` stubs with a minimal real resource and a thin FastAPI route on top. Add its own `tests/test_api.py`. This is the proof that the CLI's output is usable, not just importable.
   **File(s):** `examples/fastapi_scaffolded/` (generated + hand-completed), `examples/fastapi_scaffolded/tests/test_api.py`
   **Acceptance:** Regenerating the scaffold (`validator-gateway init --force`) followed by re-applying the same hand-written glue reproduces an app that passes the same tests — proves the generated files aren't hand-patched out-of-band.
 
-- [ ] **P12-T3: New demo — `examples/fastapi_recovery/`**
+- [x] **P12-T3: New demo — `examples/fastapi_recovery/`**
   **Do:** A FastAPI app where at least one route's gateway has a `RecoveryEngine` attached (deliberately deviating from Design Decision 8's usual REST-is-fail-fast default, to demonstrate it's possible when a developer wants retry-behind-a-slow-endpoint, per Phase 6's `get_gateway_factory` docstring). Bundle a `validator_gateway.json` exercising retry, redirect, and queue. Add tests asserting: a transient failure recovers via retry and the client still gets a 200, and a queued failure returns a distinct "accepted" response shape rather than hanging the request.
   **File(s):** `examples/fastapi_recovery/`, `examples/fastapi_recovery/validator_gateway.json`, `examples/fastapi_recovery/tests/test_api.py`
   **Acceptance:** Tests pass; a second small test wraps the same controller in a fail-fast gateway with no `recovery=` and shows the raw error surfacing instead — reinforcing Design Decision 8's "same controller, two gateways" guarantee end-to-end over real HTTP.
 
-- [ ] **P12-T4: Wire demo tests into CI**
+- [x] **P12-T4: Wire demo tests into CI**
   **Do:** Extend `.github/workflows/ci.yml` (P0-T4) with a step (or separate job) that installs `.[fastapi,dev]` and runs `pytest examples/ -v` across all demo projects, so they run on every push/PR and can't silently rot independently of the core `tests/` suite.
   **File(s):** `.github/workflows/ci.yml`
   **Acceptance:** Deliberately breaking one demo (e.g. removing a required field from a generated stub) fails CI at the `examples/` step; fixing it passes again.
@@ -651,11 +651,11 @@ Phase 9's `examples/` prove the package *can* be wired up; this phase proves it 
 
 ## Definition of Done (whole package)
 
-- [ ] All phases 0–12 checked off.
-- [ ] `pytest --cov` ≥ 90%, CI green on all three supported Python versions.
-- [ ] `ruff check .` and `mypy src/` both pass with zero errors.
-- [ ] `examples/fastapi_basic` runs standalone and demonstrates: success response, at least 3 distinct `DomainError` → formatted error mappings, one custom developer-defined exception registered via P1-T4, and the exception-logging hook firing (visible in console output).
-- [ ] `examples/worker_recovery` runs standalone (no FastAPI installed required) and demonstrates the same controller/exception hierarchy recovering via retry, redirect, and queue steps driven entirely by `validator_gateway.json`, with zero REST/HTTP code involved anywhere in the call path.
-- [ ] `validator-gateway init` (Phase 11) produces working, importable `controllers/` and `validator_gateways/` stubs in a scratch directory with no manual fixes required.
-- [ ] `examples/fastapi_basic`, `examples/fastapi_scaffolded`, and `examples/fastapi_recovery` (Phase 12) each carry their own passing `tests/` suite, wired into CI independently of the core package's own test suite.
-- [ ] README + docs allow a new developer to be productive with zero additional context, per Phase 9's acceptance criterion.
+- [x] All phases 0–12 checked off.
+- [x] `pytest --cov` ≥ 90%, CI green on all three supported Python versions.
+- [x] `ruff check .` and `mypy src/` both pass with zero errors.
+- [x] `examples/fastapi_basic` runs standalone and demonstrates: success response, at least 3 distinct `DomainError` → formatted error mappings, one custom developer-defined exception registered via P1-T4, and the exception-logging hook firing (visible in console output).
+- [x] `examples/worker_recovery` runs standalone (no FastAPI installed required) and demonstrates the same controller/exception hierarchy recovering via retry, redirect, and queue steps driven entirely by `validator_gateway.json`, with zero REST/HTTP code involved anywhere in the call path.
+- [x] `validator-gateway init` (Phase 11) produces working, importable `controllers/` and `validator_gateways/` stubs in a scratch directory with no manual fixes required.
+- [x] `examples/fastapi_basic`, `examples/fastapi_scaffolded`, and `examples/fastapi_recovery` (Phase 12) each carry their own passing `tests/` suite, wired into CI independently of the core package's own test suite.
+- [x] README + docs allow a new developer to be productive with zero additional context, per Phase 9's acceptance criterion.

@@ -47,3 +47,5 @@ jobs:
             --ignore=tests/test_openapi_registry.py \
             --ignore=tests/test_integration.py \
             --ignore=tests/test_enforcement.py
+      - name: Example demo projects (P12)
+        run: pytest examples/ -v

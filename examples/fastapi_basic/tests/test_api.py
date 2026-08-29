@@ -40,6 +40,15 @@ def test_not_found_maps_to_404():
     assert resp.json()["error"]["code"] == "not_found"
 
 
+def test_custom_developer_defined_exception_maps_to_403():
+    """UsernameReservedError is app-specific, not a validator_gateway
+    built-in — registered via register_status_mapping (P1-T4)."""
+    client = TestClient(app)
+    resp = client.post("/users", json={"name": "admin", "email": "admin@example.com"})
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "username_reserved"
+
+
 def test_duplicate_email_maps_to_409():
     client = TestClient(app)
     client.post("/users", json={"name": "Grace", "email": "grace@example.com"})

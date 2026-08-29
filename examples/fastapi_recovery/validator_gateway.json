@@ -1,0 +1,10 @@
+{
+  "upstream_error": [
+    {"action": "retry", "retry": {"max_attempts": 3, "backoff_base_seconds": 0.01}},
+    {"action": "redirect", "redirect": {"target": "degraded_sync"}},
+    {"action": "queue", "queue": {"queue_name": "recovery.upstream_error"}}
+  ],
+  "rate_limited": [
+    {"action": "queue", "queue": {"queue_name": "recovery.rate_limited"}}
+  ]
+}

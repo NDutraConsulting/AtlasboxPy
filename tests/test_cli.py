@@ -1,7 +1,14 @@
 import subprocess
 import sys
+from pathlib import Path
 
 from validator_gateway.cli import main
+
+# Resolve the console script relative to the running interpreter, not via
+# shell PATH lookup — `subprocess.run(["validator-gateway", ...])` only
+# finds it when the venv is "activated" (its bin/ on PATH). Tests must pass
+# under a plain `python -m pytest` invocation too, where it isn't.
+_CLI_SCRIPT = str(Path(sys.executable).parent / "validator-gateway")
 
 EXPECTED_FILES = [
     "controllers/__init__.py",
@@ -14,9 +21,7 @@ EXPECTED_FILES = [
 def test_help_lists_init_subcommand():
     # Exercises the actual installed console script (P11-T1's acceptance is
     # specifically about `validator-gateway --help`, not just main()).
-    result = subprocess.run(
-        ["validator-gateway", "--help"], capture_output=True, text=True
-    )
+    result = subprocess.run([_CLI_SCRIPT, "--help"], capture_output=True, text=True)
     assert result.returncode == 0
     assert "init" in result.stdout
 
