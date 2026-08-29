@@ -23,7 +23,7 @@ Work through the phases in order. Each task has a **Do** (what to build), a **Fi
 
 ## Phase 0 — Repository Scaffolding
 
-- [ ] **P0-T1: Initialize project structure**
+- [x] **P0-T1: Initialize project structure**
   **Do:** Create the repo skeleton below. Empty `__init__.py` files may be stubs for now.
   ```
   validator_gateway/
@@ -95,7 +95,7 @@ Work through the phases in order. Each task has a **Do** (what to build), a **Fi
   **File(s):** whole tree.
   **Acceptance:** `tree` output matches the above; `pip install -e .` succeeds with no source files beyond stubs.
 
-- [ ] **P0-T2: `pyproject.toml`**
+- [x] **P0-T2: `pyproject.toml`**
   **Do:** Use `hatchling` (or `setuptools>=68` with `src` layout) as build backend. Declare:
   - `name = "validator_gateway"`, semantic version starting at `0.1.0`
   - `dependencies = ["pydantic>=2.0,<3.0"]`
@@ -104,12 +104,12 @@ Work through the phases in order. Each task has a **Do** (what to build), a **Fi
   **File(s):** `pyproject.toml`
   **Acceptance:** `pip install -e ".[dev]"` installs cleanly; `python -c "import validator_gateway"` works.
 
-- [ ] **P0-T3: Tooling config**
+- [x] **P0-T3: Tooling config**
   **Do:** Add `ruff` config (line length 100, enable `E,F,I,UP`) and `mypy` config (`strict = true` for `src/`, relaxed for `tests/` and `examples/`) either in `pyproject.toml` or dedicated files. Add a `.gitignore` covering `__pycache__/`, `.venv/`, `*.egg-info/`, `.mypy_cache/`, `.pytest_cache/`, `dist/`.
   **File(s):** `pyproject.toml` (or `ruff.toml`, `mypy.ini`), `.gitignore`
   **Acceptance:** `ruff check .` and `mypy src/` run without configuration errors (failures on empty stubs are fine at this stage).
 
-- [ ] **P0-T4: CI workflow**
+- [x] **P0-T4: CI workflow**
   **Do:** GitHub Actions workflow that on push/PR: installs `.[dev]`, runs `ruff check .`, `mypy src/`, `pytest --cov=validator_gateway --cov-report=term-missing`. Matrix over Python 3.10/3.11/3.12.
   **File(s):** `.github/workflows/ci.yml`
   **Acceptance:** Workflow file is valid YAML and runs green on an empty-but-importable package.
@@ -120,7 +120,7 @@ Work through the phases in order. Each task has a **Do** (what to build), a **Fi
 
 This is the vocabulary every other phase builds on. Controllers/services raise these; they know nothing about HTTP, gRPC, retries, or queues.
 
-- [ ] **P1-T1: Base `DomainError`**
+- [x] **P1-T1: Base `DomainError`**
   **Do:** Define the root exception with a stable machine-readable `code`, a human `message`, an optional `details: dict | None` for structured context (e.g. which field failed), and an optional `cause: Exception | None` for chaining.
   ```python
   class DomainError(Exception):
@@ -137,7 +137,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   **File(s):** `src/validator_gateway/exceptions.py`
   **Acceptance:** Unit test constructs `DomainError()` with defaults and with all kwargs; `str(err)` returns the message; `err.cause` chains correctly via `raise X from cause`.
 
-- [ ] **P1-T2: Standard subclasses**
+- [x] **P1-T2: Standard subclasses**
   **Do:** Define this minimum set, each with a distinct `code` and sensible `default_message`. This set intentionally mirrors both HTTP status families and gRPC status families so a single hierarchy drives both, from any caller, with no separate code path per transport:
   - `ValidationFailedError` (code `validation_failed`) — structural/semantic input validation failure not already caught by Pydantic
   - `NotFoundError` (code `not_found`)
@@ -152,7 +152,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   **File(s):** `src/validator_gateway/exceptions.py`
   **Acceptance:** Each subclass instantiates with no args and produces its `default_message`; each is a subclass of `DomainError`; `isinstance` checks pass for `AlreadyExistsError` against both `AlreadyExistsError` and `ConflictError`.
 
-- [ ] **P1-T3: Status-code mapping table**
+- [x] **P1-T3: Status-code mapping table**
   **Do:** A single source-of-truth mapping, not scattered `if/elif` chains, from exception class to `(http_status: int, grpc_status_name: str)`. Use a `dict[type[DomainError], StatusMapping]` with a lookup function that walks the MRO so subclasses inherit their parent's mapping unless overridden.
   ```python
   @dataclass(frozen=True)
@@ -179,12 +179,12 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   **File(s):** `src/validator_gateway/exceptions.py`
   **Acceptance:** Test a custom `class TooManyItemsError(ConflictError): pass` with no explicit map entry resolves to `ConflictError`'s mapping via MRO walk. Test every class in P1-T2 resolves to a distinct, correct mapping.
 
-- [ ] **P1-T4: Developer-extensibility for custom exceptions**
+- [x] **P1-T4: Developer-extensibility for custom exceptions**
   **Do:** Public function `register_status_mapping(exc_type: type[DomainError], http_status: int, grpc_status: str) -> None` so downstream developers can register their own `DomainError` subclasses without editing package source. Also add `known_codes() -> set[str]` returning every registered code across built-ins and developer registrations — this is what Phase 5's policy loader validates against.
   **File(s):** `src/validator_gateway/exceptions.py`
   **Acceptance:** Test registers a new custom exception class + mapping from outside the package (simulate via a test-local subclass) and confirms `resolve_status` picks it up and `known_codes()` includes it.
 
-- [ ] **P1-T5: `retryable` classification**
+- [x] **P1-T5: `retryable` classification**
   **Do:** Set `retryable = False` on `PermissionDeniedError`, `UnauthenticatedError`, and `ValidationFailedError` (retrying without changing the input/credentials cannot succeed). Leave `retryable = True` (the `DomainError` default) on the rest, including `UpstreamServiceError`, `RateLimitedError`, `PreconditionFailedError`, `ConflictError`/`AlreadyExistsError`, `UnprocessableError`, and `NotFoundError`. This flag is advisory metadata for Phase 5's policy validator, not enforced at raise time.
   **File(s):** `src/validator_gateway/exceptions.py`
   **Acceptance:** `PermissionDeniedError.retryable is False`; `UpstreamServiceError.retryable is True`; a subclass without an explicit override inherits its parent's value.
@@ -193,7 +193,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
 
 ## Phase 2 — Controller Contract + Gateway Core
 
-- [ ] **P2-T1: `Controller` protocol**
+- [x] **P2-T1: `Controller` protocol**
   **Do:** Define a structural typing `Protocol` (not an ABC requiring inheritance — developers shouldn't be forced to inherit from a package base class for every controller) that a controller must satisfy. Minimum contract: controllers expose async callables. Also provide an optional `BaseController` ABC for developers who *do* want inheritance-based conventions (e.g. shared `self.logger`).
   ```python
   class Controller(Protocol):
@@ -209,7 +209,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   **File(s):** `src/validator_gateway/controller.py`
   **Acceptance:** A plain class with an `async def create_user(self, payload)` method satisfies `isinstance(obj, Controller)` under `runtime_checkable`, or passes a `validate_controller(obj)` helper if `Protocol` runtime-checking proves too loose (see P2-T2) — pick whichever technique below actually enforces intent, and justify the choice in a code comment.
 
-- [ ] **P2-T2: Controller validation at gateway construction**
+- [x] **P2-T2: Controller validation at gateway construction**
   **Do:** Because a bare `Protocol` with only methods can be satisfied by almost anything, add an explicit `validate_controller(controller: object) -> None` function that:
   1. Confirms `controller` is not `None` and not a class (must be an instance).
   2. Confirms at least one public async method exists (`inspect.iscoroutinefunction`).
@@ -218,7 +218,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   **File(s):** `src/validator_gateway/controller.py`
   **Acceptance:** Passing a plain `object()` raises `TypeError`. Passing a class with only sync methods raises `TypeError` with a message naming the missing requirement. Passing a valid async-method-bearing instance passes silently.
 
-- [ ] **P2-T3: `ValidatorGateway` base class — the core deliverable**
+- [x] **P2-T3: `ValidatorGateway` base class — the core deliverable**
   **Do:** This is the central class of the package. Note the `recovery` constructor parameter is defined but left unused (`None`-only, no branching logic) in this phase — Phase 5 amends `handle()`'s except-block to consult it. Building it into the signature now avoids an awkward Phase 5 signature change.
   ```python
   T = TypeVar("T")
@@ -271,7 +271,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   - Raising a bare `ValueError` inside the controller method is caught and wrapped into a generic `DomainError`-derived `ErrorResponse` — nothing escapes `handle()` uncaught.
   - Passing a method that belongs to a *different* object than `self.controller` raises `ValueError` before the method is invoked (test with a spy to confirm no side effect occurred).
 
-- [ ] **P2-T4: `GatewayConfig`**
+- [x] **P2-T4: `GatewayConfig`**
   **Do:** Pydantic (or plain dataclass) settings object:
   ```python
   class GatewayConfig(BaseModel):
@@ -286,7 +286,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
 
 ## Phase 3 — Response Envelope
 
-- [ ] **P3-T1: `SuccessResponse[T]` and `ErrorResponse`**
+- [x] **P3-T1: `SuccessResponse[T]` and `ErrorResponse`**
   **Do:**
   ```python
   class SuccessResponse(BaseModel, Generic[T]):
@@ -305,7 +305,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   **File(s):** `src/validator_gateway/responses.py`
   **Acceptance:** Both models serialize with `model_dump(mode="json")` to plain JSON-safe dicts. `SuccessResponse[UserOut](data=user)` validates `data` against `UserOut`.
 
-- [ ] **P3-T2: `build_error_response(exc: DomainError) -> ErrorResponse`**
+- [x] **P3-T2: `build_error_response(exc: DomainError) -> ErrorResponse`**
   **Do:** Pure function, no framework dependency, using P1-T3's `resolve_status` only to inform HTTP-layer status codes later (P3 output itself carries no HTTP status — that's the transport adapter's job, see P6).
   **File(s):** `src/validator_gateway/responses.py`
   **Acceptance:** Given any `DomainError` subclass instance, returns an `ErrorResponse` whose `error.code`/`error.message`/`error.details` match the exception.
@@ -314,17 +314,17 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
 
 ## Phase 4 — Exception Logging Hook
 
-- [ ] **P4-T1: `ExceptionHook` type + default no-op**
+- [x] **P4-T1: `ExceptionHook` type + default no-op**
   **Do:** `ExceptionHook = Callable[[DomainError], None]`. Provide `default_logging_hook(logger: logging.Logger | None = None) -> ExceptionHook` that logs at `ERROR` for 5xx-mapped exceptions and `WARNING` for 4xx-mapped ones (use P1-T3's `resolve_status` to decide the level).
   **File(s):** `src/validator_gateway/logging.py`
   **Acceptance:** Passing `on_exception=default_logging_hook()` to `ValidatorGateway` logs a `NotFoundError` at WARNING and an unexpected wrapped exception at ERROR (assert via `caplog` in pytest).
 
-- [ ] **P4-T2: Composable hooks**
+- [x] **P4-T2: Composable hooks**
   **Do:** `chain_hooks(*hooks: ExceptionHook) -> ExceptionHook` so a developer can combine e.g. structured logging + a Sentry/OTel call without the package needing to know about either.
   **File(s):** `src/validator_gateway/logging.py`
   **Acceptance:** `chain_hooks(hook_a, hook_b)` calls both in order; if `hook_a` raises, `hook_b` still runs and the original exception from `handle()` flow is unaffected (hook failures must never break `handle()` — wrap each hook call in its own try/except inside `chain_hooks`, log hook failures at ERROR without re-raising).
 
-- [ ] **P4-T3: Escape hatch for non-`DomainError`, unrecoverable exceptions**
+- [x] **P4-T3: Escape hatch for non-`DomainError`, unrecoverable exceptions**
   **Do:** Document (and implement) that `BaseException` subtypes like `KeyboardInterrupt` and `SystemExit` are **not** caught by `handle()` — only `Exception` and below. Add an explicit test proving this.
   **File(s):** `src/validator_gateway/gateway.py`, `tests/test_gateway.py`
   **Acceptance:** Raising `SystemExit` inside a controller method propagates out of `handle()` uncaught.

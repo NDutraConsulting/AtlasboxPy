@@ -17,6 +17,7 @@ from validator_gateway.exceptions import (
     resolve_status,
 )
 from validator_gateway.gateway import ValidatorGateway
+from validator_gateway.logging import ExceptionHook, chain_hooks, default_logging_hook
 from validator_gateway.responses import ErrorDetail, ErrorResponse, SuccessResponse
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "DomainError",
     "ErrorDetail",
     "ErrorResponse",
+    "ExceptionHook",
     "GatewayConfig",
     "NotFoundError",
     "PermissionDeniedError",
@@ -38,6 +40,8 @@ __all__ = [
     "UpstreamServiceError",
     "ValidationFailedError",
     "ValidatorGateway",
+    "chain_hooks",
+    "default_logging_hook",
     "known_codes",
     "register_status_mapping",
     "resolve_status",

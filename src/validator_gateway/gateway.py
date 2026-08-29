@@ -6,12 +6,11 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 from validator_gateway.config import GatewayConfig
 from validator_gateway.controller import validate_controller
 from validator_gateway.exceptions import DomainError
+from validator_gateway.logging import ExceptionHook
 from validator_gateway.responses import ErrorResponse, SuccessResponse, build_error_response
 
 if TYPE_CHECKING:
     from validator_gateway.recovery.engine import RecoveryEngine
-
-ExceptionHook = Callable[[DomainError], None]
 
 T = TypeVar("T")
 

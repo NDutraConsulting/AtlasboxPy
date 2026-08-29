@@ -1,5 +1,24 @@
+import pytest
+from pydantic import BaseModel
+
 from validator_gateway.exceptions import NotFoundError
 from validator_gateway.responses import SuccessResponse, build_error_response
+
+
+class UserOut(BaseModel):
+    id: str
+    name: str
+
+
+def test_success_response_validates_data_against_generic_type():
+    resp = SuccessResponse[UserOut](data={"id": "1", "name": "Ada"})
+    assert isinstance(resp.data, UserOut)
+    assert resp.data.name == "Ada"
+
+
+def test_success_response_generic_rejects_invalid_data():
+    with pytest.raises(Exception):
+        SuccessResponse[UserOut](data={"id": "1"})
 
 
 def test_success_response_serializes_json_safe():
