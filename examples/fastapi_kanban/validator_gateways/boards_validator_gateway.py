@@ -10,12 +10,11 @@ from __future__ import annotations
 from enum import Enum
 
 from validator_gateway import DomainError, ErrorDetail, ErrorResponse, default_logging_hook
+from validator_gateway.classifying import ClassifyingValidatorGateway, SourceJson
 from validator_gateway.responses import build_error_response
 
 from ..controllers.boards_controller import BoardsController
 from ..services import KanbanService
-from .classifying_validator_gateway import ClassifyingValidatorGateway
-from .source_json import SourceJson
 
 
 class FailureCase(Enum):
@@ -33,7 +32,8 @@ class BoardsValidatorGateway(ClassifyingValidatorGateway[BoardsController]):
     """Constructs and wraps a BoardsController around `service`. Fail-fast
     (no recovery=), per Design Decision 8 — a client is waiting.
 
-    `source_json` is required, not inferred — see source_json.py.
+    `source_json` is required, not inferred — see
+    validator_gateway.classifying.SourceJson.
     """
 
     _KNOWN_CASES: dict[str, Enum] = {

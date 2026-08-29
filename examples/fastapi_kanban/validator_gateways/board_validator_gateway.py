@@ -1,7 +1,8 @@
 """The gateway for the "board" feature (columns and cards within one
-board). Built on ClassifyingValidatorGateway (see that file for the shared
-try/except/severity-fallback/logging mechanics) — everything below is
-specific to THIS feature: what a failure means, and what to do about it."""
+board). Built on validator_gateway.classifying.ClassifyingValidatorGateway
+(see that class for the shared try/except/severity-fallback/logging
+mechanics) — everything below is specific to THIS feature: what a failure
+means, and what to do about it."""
 
 from __future__ import annotations
 
@@ -11,13 +12,12 @@ from typing import Any
 
 from validator_gateway import DomainError, ErrorDetail, ErrorResponse, SuccessResponse
 from validator_gateway import default_logging_hook
+from validator_gateway.classifying import ClassifyingValidatorGateway, SourceJson
 from validator_gateway.responses import build_error_response
 
 from ..controllers.board_controller import BoardController
 from ..services import MAX_CARD_TITLE_LENGTH, KanbanService
-from .classifying_validator_gateway import ClassifyingValidatorGateway
 from .degraded_board_validator_gateway import DegradedBoardValidatorGateway
-from .source_json import SourceJson
 
 
 class FailureCase(Enum):
@@ -53,7 +53,8 @@ class BoardValidatorGateway(ClassifyingValidatorGateway[BoardController]):
 
     `source_json` is required, not inferred: the caller (an api_route in
     main.py, today — a worker or agent tomorrow) must declare its own url,
-    caller_type, and (for an HTTP caller) REST method. See source_json.py.
+    caller_type, and (for an HTTP caller) REST method. See
+    validator_gateway.classifying.SourceJson.
     """
 
     # The recategorization layer developers extend: add an entry here to

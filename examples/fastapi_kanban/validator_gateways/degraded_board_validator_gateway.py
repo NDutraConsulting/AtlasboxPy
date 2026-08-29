@@ -1,7 +1,7 @@
 from validator_gateway import ValidatorGateway, default_logging_hook
+from validator_gateway.classifying import SourceJson
 
 from ..controllers.degraded_board_controller import DegradedBoardController
-from .source_json import SourceJson
 
 
 class DegradedBoardValidatorGateway(ValidatorGateway[DegradedBoardController]):

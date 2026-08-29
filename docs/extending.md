@@ -54,6 +54,72 @@ gateway = ValidatorGateway(
 `chain_hooks` runs every hook even if an earlier one raises — a broken Sentry
 call is logged and swallowed, never allowed to break `handle()`'s response.
 
+## Classifying gateways — an opt-in alternative to `ValidatorGateway`
+
+The default `ValidatorGateway` treats every `DomainError` the same way:
+`build_error_response(exc)`. Most gateways want that. Some don't — a
+gateway that needs per-code custom messaging, or that wants to redirect a
+specific failure to a *different* gateway (not just a registered fallback
+callable, an actual second `ValidatorGateway`), can subclass
+`validator_gateway.classifying.ClassifyingValidatorGateway` instead:
+
+```python
+from enum import Enum
+from validator_gateway import DomainError, default_logging_hook
+from validator_gateway.classifying import ClassifyingValidatorGateway, SourceJson
+from validator_gateway.responses import build_error_response
+
+class FailureCase(Enum):
+    NOT_FOUND = "not_found"
+    CLIENT_ERROR = "client_error"
+    SERVER_ERROR = "server_error"
+
+class UserValidatorGateway(ClassifyingValidatorGateway[UserController]):
+    _KNOWN_CASES: dict[str, Enum] = {"not_found": FailureCase.NOT_FOUND}
+
+    def __init__(self, service, *, source_json: SourceJson) -> None:
+        super().__init__(UserController(service), source_json=source_json,
+                          on_exception=default_logging_hook())
+
+    def _severity_fallback(self, is_server_error: bool) -> Enum:
+        return FailureCase.SERVER_ERROR if is_server_error else FailureCase.CLIENT_ERROR
+
+    async def _resolve(self, case, exc, action, args):
+        match case:
+            case FailureCase.NOT_FOUND:
+                return build_error_response(exc)  # or custom messaging, or a redirect
+            case _:
+                return build_error_response(exc)
+```
+
+`_severity_fallback` and `_resolve` are `abstractmethod`s — a subclass that
+doesn't implement both cannot be instantiated at all, so the classification
+logic can never be silently skipped. `_classify()` checks your `_KNOWN_CASES`
+map first (the recategorization layer you extend); anything not listed
+there falls back to `_severity_fallback()`, decided purely from the
+exception's mapped HTTP status via `resolve_status()` — nobody has to
+predict every edge case up front for it to still get *some* sane bucket. A
+raw non-`DomainError` exception (a bug, not a business-rule failure) never
+reaches `_resolve()` at all; `handle()` reports it as `"unclassified"`
+directly.
+
+`source_json` (a `SourceJson(url, caller_type, method=None)`) is required,
+not inferred — the caller must declare its own identity. `method` is
+optional because a worker or agent calling the gateway directly has no
+REST verb to report; an HTTP route generally supplies all three.
+
+Every call is logged via `logging.getLogger("validator_gateway.traffic")`
+— one line per call, success and failure alike, carrying `source_json`,
+the method name, the classified case, and the request/response JSON. This
+is separate from `on_exception` (which only ever fires on failure): point
+a handler at that logger name to send it wherever you like.
+
+`validator-gateway add-feature <name>` scaffolds a starting
+`{name}_controller.py` + `{name}_validator_gateway.py` pair built on this
+base, so you don't hand-write the skeleton above for every new feature —
+see [`examples/fastapi_kanban`](../examples/fastapi_kanban) for a complete
+worked example, including a redirect to a different gateway.
+
 ## The OpenAPI registry
 
 A "thin" route — one that doesn't type its body as a Pydantic model, e.g.

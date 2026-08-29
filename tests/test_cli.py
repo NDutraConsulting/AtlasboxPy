@@ -86,12 +86,10 @@ def test_init_respects_custom_path(tmp_path):
 ADD_FEATURE_SHARED_FILES = [
     "controllers/__init__.py",
     "validator_gateways/__init__.py",
-    "validator_gateways/classifying_validator_gateway.py",
-    "validator_gateways/source_json.py",
 ]
 
 
-def test_add_feature_creates_controller_gateway_and_shared_base(tmp_path, capsys):
+def test_add_feature_creates_controller_and_gateway(tmp_path, capsys):
     exit_code = main(["add-feature", "invoice", "--path", str(tmp_path)])
     assert exit_code == 0
     assert (tmp_path / "controllers/invoice_controller.py").exists()
@@ -99,6 +97,16 @@ def test_add_feature_creates_controller_gateway_and_shared_base(tmp_path, capsys
     for name in ADD_FEATURE_SHARED_FILES:
         assert (tmp_path / name).exists()
     assert "Created in" in capsys.readouterr().out
+    # ClassifyingValidatorGateway/SourceJson are imported straight from the
+    # package, not generated — nothing else should appear in either dir.
+    assert sorted(p.name for p in (tmp_path / "controllers").iterdir()) == [
+        "__init__.py",
+        "invoice_controller.py",
+    ]
+    assert sorted(p.name for p in (tmp_path / "validator_gateways").iterdir()) == [
+        "__init__.py",
+        "invoice_validator_gateway.py",
+    ]
 
 
 def test_add_feature_generated_gateway_imports_and_classifies_correctly(tmp_path, monkeypatch):
@@ -111,7 +119,7 @@ def test_add_feature_generated_gateway_imports_and_classifies_correctly(tmp_path
             "-c",
             "import asyncio\n"
             "from validator_gateways.invoice_validator_gateway import InvoiceValidatorGateway\n"
-            "from validator_gateways.source_json import SourceJson\n"
+            "from validator_gateway.classifying import SourceJson\n"
             "gateway = InvoiceValidatorGateway(\n"
             "    source_json=SourceJson(\n"
             "        url='/api/invoices/1', method='GET', caller_type='api_route'\n"
@@ -132,19 +140,17 @@ def test_add_feature_generated_gateway_imports_and_classifies_correctly(tmp_path
     assert result.returncode == 0, result.stderr
 
 
-def test_add_feature_reuses_shared_base_across_multiple_features(tmp_path):
+def test_add_feature_multiple_features_coexist_without_collision(tmp_path):
     main(["add-feature", "invoice", "--path", str(tmp_path)])
-    base_path = tmp_path / "validator_gateways/classifying_validator_gateway.py"
-    before = base_path.read_text()
 
     exit_code = main(["add-feature", "payment", "--path", str(tmp_path)])
 
     assert exit_code == 0
     assert (tmp_path / "controllers/payment_controller.py").exists()
     assert (tmp_path / "validator_gateways/payment_validator_gateway.py").exists()
-    assert base_path.read_text() == before  # untouched by the second call
-    # The first feature's own files are also untouched.
+    # The first feature's own files are untouched by the second call.
     assert (tmp_path / "controllers/invoice_controller.py").exists()
+    assert (tmp_path / "validator_gateways/invoice_validator_gateway.py").exists()
 
 
 def test_add_feature_again_without_force_does_not_overwrite(tmp_path, capsys):

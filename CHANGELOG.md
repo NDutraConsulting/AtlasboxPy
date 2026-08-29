@@ -14,3 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ValidatorGateway` core with `handle()` as the single enforced call path.
 - `SuccessResponse` / `ErrorResponse` envelope models.
 - `GatewayConfig`.
+- `validator_gateway.classifying.ClassifyingValidatorGateway` and `SourceJson` — an
+  opt-in gateway style that classifies failures into a developer-defined enum and
+  resolves each case via a visible `match`/`case` block (custom messaging, or a
+  redirect to a different gateway), instead of the default uniform
+  `build_error_response(exc)`. `_severity_fallback`/`_resolve` are `abstractmethod`s,
+  so a subclass can't skip implementing them. `validator-gateway add-feature <name>`
+  scaffolds a starting controller + gateway pair built on it.

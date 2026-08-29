@@ -29,7 +29,8 @@ jobs:
           CORE_PATHS="src/validator_gateway/exceptions.py src/validator_gateway/controller.py \
             src/validator_gateway/gateway.py src/validator_gateway/responses.py \
             src/validator_gateway/config.py src/validator_gateway/logging.py \
-            src/validator_gateway/registry.py src/validator_gateway/recovery"
+            src/validator_gateway/registry.py src/validator_gateway/classifying.py \
+            src/validator_gateway/recovery"
           if grep -rlE '^\s*(import|from)\s+fastapi(\s|\.|$)' $CORE_PATHS; then
             echo "::error::Core modules must not import fastapi — keep it framework-agnostic (Design Decision 4)." >&2
             exit 1
