@@ -1,0 +1,5 @@
+TODO: license not yet chosen by the maintainer.
+
+Per the build plan (P10-T2), do not assume MIT or any other license by
+default. Confirm with the maintainer before the 0.1.0 release and replace
+this file with the actual license text.

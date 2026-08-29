@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "validator_gateway"
+version = "0.1.0"
+description = "One enforced call path into your business logic — for REST routes, background workers, agents, and gRPC servicers alike."
+readme = "README.md"
+requires-python = ">=3.10"
+# License TODO: maintainer has not chosen one yet (see LICENSE, P10-T2). Do not assume MIT.
+license-files = ["LICENSE"]
+dependencies = [
+    "pydantic>=2.0,<3.0",
+]
+
+[project.optional-dependencies]
+fastapi = ["fastapi>=0.100"]
+dev = ["pytest", "pytest-asyncio", "pytest-cov", "httpx", "ruff", "mypy", "fastapi", "uvicorn"]
+
+[project.scripts]
+validator-gateway = "validator_gateway.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/TODO/validator_gateway"
+Repository = "https://github.com/TODO/validator_gateway"
+Issues = "https://github.com/TODO/validator_gateway/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/validator_gateway"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+exclude = ["tests/", "examples/"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+strict = false
+
+[[tool.mypy.overrides]]
+module = "examples.*"
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
