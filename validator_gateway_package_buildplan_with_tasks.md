@@ -570,10 +570,10 @@ This phase is what lets workers and agents call `handle()` directly and get auto
 
 ## Phase 10 — Packaging & Release Readiness
 
-- [ ] **P10-T1: Version + changelog discipline.** `CHANGELOG.md` follows Keep a Changelog format; version in `pyproject.toml` bumped to `0.1.0` for first release.
-- [ ] **P10-T2: `LICENSE`.** Confirm license choice with the maintainer before adding (do not assume MIT by default — ask, or leave a `TODO` placeholder if this build plan is being run non-interactively).
-- [ ] **P10-T3: Build + local install smoke test.** `python -m build` produces a wheel + sdist; `pip install dist/*.whl` into a clean venv and re-run the quickstart from P9-T3 against the installed package (not the editable source tree) to catch packaging bugs (missing files, bad `MANIFEST`, etc.). Confirm `examples/worker_recovery/validator_gateway.json` and `docs/schemas/policy.schema.json` are included if the package ships example/schema data — otherwise confirm they're deliberately excluded from the wheel.
-- [ ] **P10-T4: Publish workflow (do not run automatically).** Add `.github/workflows/publish.yml` triggered on GitHub Release, using `pypa/gh-action-pypi-publish` with trusted publishing (OIDC) rather than a stored token. Leave it unexecuted until the maintainer explicitly cuts a release.
+- [x] **P10-T1: Version + changelog discipline.** `CHANGELOG.md` follows Keep a Changelog format; version in `pyproject.toml` bumped to `0.1.0` for first release.
+- [x] **P10-T2: `LICENSE`.** Confirm license choice with the maintainer before adding (do not assume MIT by default — ask, or leave a `TODO` placeholder if this build plan is being run non-interactively).
+- [x] **P10-T3: Build + local install smoke test.** `python -m build` produces a wheel + sdist; `pip install dist/*.whl` into a clean venv and re-run the quickstart from P9-T3 against the installed package (not the editable source tree) to catch packaging bugs (missing files, bad `MANIFEST`, etc.). Confirm `examples/worker_recovery/validator_gateway.json` and `docs/schemas/policy.schema.json` are included if the package ships example/schema data — otherwise confirm they're deliberately excluded from the wheel.
+- [x] **P10-T4: Publish workflow (do not run automatically).** Add `.github/workflows/publish.yml` triggered on GitHub Release, using `pypa/gh-action-pypi-publish` with trusted publishing (OIDC) rather than a stored token. Leave it unexecuted until the maintainer explicitly cuts a release.
 
 **Acceptance:** Fresh clean-room install from the built wheel works identically to the editable install used throughout development.
 
@@ -583,7 +583,7 @@ This phase is what lets workers and agents call `handle()` directly and get auto
 
 Design goal: a developer should be able to run one command in a fresh project and get idempotent, importable starter files for controllers and gateways, without hand-copying from `examples/`.
 
-- [ ] **P11-T1: `validator-gateway` console script**
+- [x] **P11-T1: `validator-gateway` console script**
   **Do:** Add a `src/validator_gateway/cli.py` module built on stdlib `argparse` (no new runtime dependency — keeps the framework-agnostic-core guarantee from Design Decision 4 intact) exposing a `main(argv: list[str] | None = None) -> int` entry point, and register it in `pyproject.toml`:
   ```toml
   [project.scripts]
@@ -592,7 +592,7 @@ Design goal: a developer should be able to run one command in a fresh project an
   **File(s):** `src/validator_gateway/cli.py`, `pyproject.toml`
   **Acceptance:** After `pip install -e .`, `validator-gateway --help` runs and lists the `init` subcommand.
 
-- [ ] **P11-T2: `validator-gateway init` command**
+- [x] **P11-T2: `validator-gateway init` command**
   **Do:** Implement `init` with signature `validator-gateway init [--path PATH] [--force]` (`PATH` defaults to cwd) that creates, relative to `PATH`:
   ```
   controllers/
@@ -606,17 +606,17 @@ Design goal: a developer should be able to run one command in a fresh project an
   **File(s):** `src/validator_gateway/cli.py`, template content either as inline strings or `src/validator_gateway/_templates/*.py.tmpl`
   **Acceptance:** Running `validator-gateway init` in an empty directory creates exactly the four files above; the generated `example_controller.py` and `example_gateway.py` import cleanly and `python -c "from validator_gateways.example_gateway import gateway"` succeeds with no edits required.
 
-- [ ] **P11-T3: Idempotency and `--force` safety**
+- [x] **P11-T3: Idempotency and `--force` safety**
   **Do:** Running `init` a second time without `--force` must not overwrite any existing file — it must report which files already exist and exit non-zero, rather than clobbering developer edits. `--force` overwrites unconditionally.
   **File(s):** `src/validator_gateway/cli.py`
   **Acceptance:** Test: run `init`, hand-edit `example_controller.py`, run `init` again without `--force` — file is untouched; run with `--force` — file is regenerated from the template.
 
-- [ ] **P11-T4: CLI tests**
+- [x] **P11-T4: CLI tests**
   **Do:** `tests/test_cli.py` invoking `cli.main([...])` against a `tmp_path`, covering: fresh `init`, `init` into a non-empty directory without `--force`, `init --force`, and `init --path <other-dir>`.
   **File(s):** `tests/test_cli.py`
   **Acceptance:** All four scenarios pass; no test writes outside `tmp_path`.
 
-- [ ] **P11-T5: Document it**
+- [x] **P11-T5: Document it**
   **Do:** Add a "Scaffolding a new project" section to `docs/quickstart.md` showing `pip install validator_gateway`, `validator-gateway init`, then wiring the generated gateway into a route.
   **File(s):** `docs/quickstart.md`
   **Acceptance:** Section present and matches the actual CLI output/behavior from P11-T2/T3.
