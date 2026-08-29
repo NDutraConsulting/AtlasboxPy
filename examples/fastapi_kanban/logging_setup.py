@@ -9,18 +9,24 @@ controller method was called, and whether it succeeded or failed.
 
 Writes to logs/{YYYY-mm-dd}_validator_gateway.log (relative to this file,
 i.e. examples/fastapi_kanban/logs/), rolling over to a new file at midnight
-local time without needing a process restart.
+local time without needing a process restart. Each line carries the actual
+incoming request payload and the actual JSON response envelope handed back
+to the api_router — not just a controller/method/outcome summary — so you
+can see exactly what moved across the gateway in both directions.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable, Coroutine
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from validator_gateway import ErrorResponse, SuccessResponse, ValidatorGateway
+from pydantic import BaseModel
+
+from validator_gateway import ValidatorGateway
 from validator_gateway.fastapi_integration import to_json_response
 
 _LOG_DIR = Path(__file__).parent / "logs"
@@ -64,6 +70,15 @@ class _DailyTrafficLogger:
 _traffic_logger = _DailyTrafficLogger(_LOG_DIR, "validator_gateway.log")
 
 
+def _to_jsonable(value: Any) -> Any:
+    """Pydantic request models become their JSON body; anything else
+    (path params like a board_id string) passes through as-is — both are
+    already JSON-serializable."""
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    return value
+
+
 async def handle_and_log(
     gateway: ValidatorGateway[Any],
     action: Callable[..., Coroutine[Any, Any, Any]],
@@ -75,21 +90,27 @@ async def handle_and_log(
         result = await gateway.handle(action, ...)
         return to_json_response(result)
 
-    Adds one line to logs/{date}_validator_gateway.log per call — every
-    request that actually moved across this gateway, success or error.
+    Adds one line to logs/{date}_validator_gateway.log per call, carrying
+    the actual incoming request (the Pydantic payload's JSON body, plus any
+    path params) and the actual JSON response envelope handed back to the
+    api_router — the same dict to_json_response() serializes into the
+    JSONResponse body.
     """
     controller_name = type(gateway.controller).__name__
     method_name = action.__name__
+
+    request_payload: list[Any] = [_to_jsonable(a) for a in args]
+    if kwargs:
+        request_payload.append({k: _to_jsonable(v) for k, v in kwargs.items()})
+
     result = await gateway.handle(action, *args, **kwargs)
-    if isinstance(result, SuccessResponse):
-        _traffic_logger.info("%s.%s -> success", controller_name, method_name)
-    else:
-        assert isinstance(result, ErrorResponse)
-        _traffic_logger.info(
-            "%s.%s -> error code=%s message=%s",
-            controller_name,
-            method_name,
-            result.error.code,
-            result.error.message,
-        )
+    response_payload = result.model_dump(mode="json")
+
+    _traffic_logger.info(
+        "%s.%s request=%s response=%s",
+        controller_name,
+        method_name,
+        json.dumps(request_payload),
+        json.dumps(response_payload),
+    )
     return to_json_response(result)

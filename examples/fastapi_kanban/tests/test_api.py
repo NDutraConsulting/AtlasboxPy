@@ -153,14 +153,26 @@ def test_static_feature_assets_are_served():
 
 def test_gateway_traffic_is_logged_success_and_error():
     """Every call through a gateway — not just failures — lands in
-    logs/{today}_validator_gateway.log (see logging_setup.handle_and_log)."""
+    logs/{today}_validator_gateway.log (see logging_setup.handle_and_log),
+    carrying the actual request payload and the actual JSON response
+    envelope handed back to the api_router."""
     client = TestClient(app)
-    board = _create_board(client)
+    board = _create_board(client, name="Logged board")
     client.get("/api/boards/does-not-exist")  # a failing call, on purpose
 
     log_path = _LOG_DIR / f"{datetime.now().strftime('%Y-%m-%d')}_validator_gateway.log"
     assert log_path.exists()
-    contents = log_path.read_text()
-    assert "BoardsController.create_board -> success" in contents
-    assert "BoardController.get_board -> error code=not_found" in contents
-    assert board["id"]  # sanity: the earlier call actually worked
+    lines = log_path.read_text().splitlines()
+
+    # The log file persists across the whole test session (other tests also
+    # create boards), so match on this test's own data, not just the method.
+    create_line = next(line for line in lines if "Logged board" in line)
+    assert "BoardsController.create_board" in create_line
+    assert 'request=[{"name": "Logged board"}]' in create_line
+    assert '"status": "success"' in create_line
+    assert board["id"] in create_line  # the created board's id is in the logged response
+
+    not_found_line = next(line for line in lines if "BoardController.get_board" in line)
+    assert 'request=["does-not-exist"]' in not_found_line
+    assert '"status": "error"' in not_found_line
+    assert '"code": "not_found"' in not_found_line
