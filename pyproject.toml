@@ -7,6 +7,10 @@ name = "validator_gateway"
 version = "0.1.0"
 description = "One enforced call path into your business logic — for REST routes, background workers, agents, and gRPC servicers alike."
 readme = "README.md"
+authors = [
+    {name = "Nikko Dutra", email = "ndutra.consulting@gmail.com"},
+    {name = "NDutra Consulting"},
+]
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
