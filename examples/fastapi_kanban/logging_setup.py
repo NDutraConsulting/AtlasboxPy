@@ -13,6 +13,12 @@ local time without needing a process restart. Each line carries the actual
 incoming request payload and the actual JSON response envelope handed back
 to the api_router — not just a controller/method/outcome summary — so you
 can see exactly what moved across the gateway in both directions.
+
+Each line is tagged with the gateway's own `source_info` (e.g.
+"board_validator_gateway.py") rather than the controller's class name —
+source_info is a property the caller supplies when constructing a
+*ValidatorGateway subclass (see validator_gateways/board_validator_gateway.py),
+not something inferred from the controller it happens to wrap.
 """
 
 from __future__ import annotations
@@ -94,9 +100,11 @@ async def handle_and_log(
     the actual incoming request (the Pydantic payload's JSON body, plus any
     path params) and the actual JSON response envelope handed back to the
     api_router — the same dict to_json_response() serializes into the
-    JSONResponse body.
+    JSONResponse body. The log line is tagged with the gateway's own
+    `source_info` (required on *ValidatorGateway subclasses), not the
+    controller's class name.
     """
-    controller_name = type(gateway.controller).__name__
+    source_info = getattr(gateway, "source_info", type(gateway.controller).__name__)
     method_name = action.__name__
 
     request_payload: list[Any] = [_to_jsonable(a) for a in args]
@@ -108,7 +116,7 @@ async def handle_and_log(
 
     _traffic_logger.info(
         "%s.%s request=%s response=%s",
-        controller_name,
+        source_info,
         method_name,
         json.dumps(request_payload),
         json.dumps(response_payload),
