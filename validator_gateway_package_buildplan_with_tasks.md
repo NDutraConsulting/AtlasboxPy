@@ -335,7 +335,7 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
 
 This phase is what lets workers and agents call `handle()` directly and get automatic retry, fallback/redirect, or queue-based recovery — without any REST layer involved, and without changing how a fail-fast REST gateway behaves. It reuses `DomainError.code` (Phase 1) as the only dispatch key; no second taxonomy is introduced.
 
-- [ ] **P5-T1: Recovery data model**
+- [x] **P5-T1: Recovery data model**
   **Do:** Define the step vocabulary as Pydantic models, kept intentionally small and declarative:
   ```python
   class RecoveryAction(str, Enum):
@@ -375,7 +375,7 @@ This phase is what lets workers and agents call `handle()` directly and get auto
   **File(s):** `src/validator_gateway/recovery/models.py`
   **Acceptance:** All models round-trip through `model_dump_json()` / `model_validate_json()`. A policy list of 3 steps deserializes correctly from the example `validator_gateway.json` shape below (P5-T2).
 
-- [ ] **P5-T2: `PolicyStore` + `JSONFilePolicyStore` + JSON Schema**
+- [x] **P5-T2: `PolicyStore` + `JSONFilePolicyStore` + JSON Schema**
   **Do:** Define the storage seam and one concrete implementation:
   ```python
   class PolicyStore(Protocol):
@@ -405,17 +405,17 @@ This phase is what lets workers and agents call `handle()` directly and get auto
   **File(s):** `src/validator_gateway/recovery/policy_store.py`, `docs/schemas/policy.schema.json`
   **Acceptance:** Loading a file with an unknown code raises `PolicyValidationError` naming the bad key. Loading a file with `{"action": "retry"}` under `permission_denied` raises `PolicyValidationError` naming the non-retryable code. A well-formed file loads and `get_policy("upstream_error")` returns 3 `RecoveryStep` objects in order.
 
-- [ ] **P5-T3: `DBPolicyStore` — seam only**
+- [x] **P5-T3: `DBPolicyStore` — seam only**
   **Do:** Define the `Protocol` shape only (matches `PolicyStore`); do not implement a working database-backed store in this phase. Add a docstring explaining the intended shape (a table keyed by `code` storing a JSON blob of steps, same validation rules as P5-T2 applied on write, not just on read) so a developer can implement it later without redesigning the interface.
   **File(s):** `src/validator_gateway/recovery/policy_store.py`
   **Acceptance:** `DBPolicyStore` (or a documented note that `PolicyStore` itself is sufficient as the seam) exists and is referenced from `docs/recovery_policies.md`; no runtime behavior required.
 
-- [ ] **P5-T4: Redirect target allowlist (security-critical)**
+- [x] **P5-T4: Redirect target allowlist (security-critical)**
   **Do:** Add `register_fallback(name: str, target: Callable[..., Coroutine]) -> None` on `ValidatorGateway`, storing entries in a private `dict[str, Callable]`. `RedirectSpec.target` values are resolved **only** through this dict at call time — never via `getattr` on an arbitrary string, `importlib`, or `eval`. Resolving an unregistered target must raise a clear error at the point the recovery engine first needs it (fail loud, not a silent no-op fallthrough to `FAIL`).
   **File(s):** `src/validator_gateway/gateway.py`
   **Acceptance:** A policy step naming a redirect target that was never registered raises a descriptive error when the recovery engine attempts to use it (test both: registered-and-resolves correctly, and unregistered-and-raises). Confirm via code review comment / test that no `importlib`, `eval`, or `getattr`-on-a-free-string path exists anywhere in the redirect resolution code.
 
-- [ ] **P5-T5: `RecoveryEngine` — match/case dispatch**
+- [x] **P5-T5: `RecoveryEngine` — match/case dispatch**
   **Do:** The engine walks a code's step list in order, executing each until one succeeds, using `match`/`case` on `RecoveryAction` as the dispatch mechanism (per your design). Enforce a hard cap on total steps executed across the whole chain (e.g. `max_total_steps: int = 10` config value) to prevent runaway loops regardless of how a policy file is authored.
   ```python
   class RecoveryEngine:
@@ -460,20 +460,20 @@ This phase is what lets workers and agents call `handle()` directly and get auto
   **File(s):** `src/validator_gateway/recovery/engine.py`
   **Acceptance:** A 3-step policy `[RETRY(x2, always fails), REDIRECT(succeeds)]` returns the redirect's result, not an error. A policy where every step fails and no `FAIL` step is present ultimately re-raises the original exception rather than looping forever (verified against `max_total_steps`).
 
-- [ ] **P5-T6: `EnqueueHook` interface**
+- [x] **P5-T6: `EnqueueHook` interface**
   **Do:** `EnqueueHook = Callable[[QueueSpec, QueuedJob], Awaitable[None]]`. The package ships no concrete queue backend (no bundled Celery/RQ/SQS client) — developers supply their own hook, matching the pattern already established for `ExceptionHook` in Phase 4.
   **File(s):** `src/validator_gateway/recovery/engine.py`
   **Acceptance:** A test `enqueue_hook` (an in-memory list append) receives a correctly populated `QueuedJob` when a `QUEUE` step executes, including a serializable `args`/`kwargs` payload and the correct `attempt_count`.
 
-- [ ] **P5-T7: Wire `RecoveryEngine` into `ValidatorGateway.handle()`**
+- [x] **P5-T7: Wire `RecoveryEngine` into `ValidatorGateway.handle()`**
   **Do:** Amend the `except DomainError as exc:` branch from P2-T3: if `self._recovery is not None`, call `await self._recovery.recover(exc, self, action, args, kwargs)` and wrap its result in `SuccessResponse`; if that raises (recovery exhausted or a `FAIL` step hit), fall through to the existing `build_error_response(exc)` path. If `self._recovery is None`, behavior is byte-for-byte identical to Phase 2 — this must not change default (REST) behavior for gateways that don't opt in.
   **File(s):** `src/validator_gateway/gateway.py`
   **Acceptance:** Two tests against the *same controller*: (1) a gateway with no `recovery` returns a formatted `ErrorResponse` immediately on `UpstreamServiceError`, no retries observed; (2) a gateway with a `RecoveryEngine` attached and a matching retry policy returns `SuccessResponse` after N simulated transient failures, and the underlying action was invoked the expected number of times.
 
-- [ ] **P5-T8: Transport-agnostic core guardrail**
+- [x] **P5-T8: Transport-agnostic core guardrail**
   **Do:** Add a CI check (an `import-linter` contract, or a simple `ruff`/`grep`-based rule) that fails the build if `exceptions.py`, `controller.py`, `gateway.py`, `responses.py`, `config.py`, `logging.py`, `registry.py`, or anything under `recovery/` imports `fastapi` or any other transport-specific library. This is what makes "a gRPC servicer just instantiates `ValidatorGateway` directly" actually true rather than aspirational — it's enforced, not just documented. No `grpc_integration/` package, adapter, or forward-looking phase is needed: the core already accepts any caller.
   **File(s):** `.github/workflows/ci.yml` (or a dedicated `importlinter.toml` invoked from it)
-  **Acceptance:** Introducing a stray `import fastapi` into `gateway.py` in a test branch causes CI to fail; removing it passes again. Core test suite (P8) requires no `fastapi` install to run — verify by running `pytest tests/ -k "not fastapi_integration and not openapi_registry"` inside a venv where `fastapi` was never installed.
+  **Acceptance:** Introducing a stray `import fastapi` into `gateway.py` in a test branch causes CI to fail; removing it passes again. Core test suite (P8) requires no `fastapi` install to run — verify by running `pytest tests/ --ignore=tests/test_fastapi_integration.py --ignore=tests/test_openapi_registry.py` inside a venv where `fastapi` was never installed. (Use `--ignore`, not `-k "not fastapi_integration and not openapi_registry"` — `-k` only filters which collected tests run, it doesn't skip *collecting* those modules, so the excluded test file still gets imported and fails with `ModuleNotFoundError: fastapi` before any filtering happens.)
 
 **Note for Phase 6:** REST routes will typically construct their `ValidatorGateway` **without** `recovery` (fail-fast, per Design Decision 8); workers/agents construct theirs **with** it. Both wrap the same controller instance or class.
 
@@ -481,7 +481,7 @@ This phase is what lets workers and agents call `handle()` directly and get auto
 
 ## Phase 6 — FastAPI Integration (optional extra)
 
-- [ ] **P6-T1: Dependency-injection helper**
+- [x] **P6-T1: Dependency-injection helper**
   **Do:** `get_gateway_factory(controller_factory: Callable[..., T], **gateway_kwargs) -> Callable[..., ValidatorGateway[T]]` returning a FastAPI-`Depends`-compatible callable, so routes can do:
   ```python
   gateway_dep = get_gateway_factory(lambda: UserController(user_service), on_exception=default_logging_hook())
@@ -495,17 +495,17 @@ This phase is what lets workers and agents call `handle()` directly and get auto
   **File(s):** `src/validator_gateway/fastapi_integration/dependency.py`
   **Acceptance:** Works with `fastapi.testclient.TestClient` against a minimal app; gateway is constructed fresh per-request (no shared mutable state across requests unless the developer's `controller_factory` deliberately returns a singleton).
 
-- [ ] **P6-T2: `to_json_response` — envelope → `Response`**
+- [x] **P6-T2: `to_json_response` — envelope → `Response`**
   **Do:** Convert a `SuccessResponse`/`ErrorResponse` into a `fastapi.responses.JSONResponse` with the correct HTTP status (200 for success unless overridden, mapped status via P1-T3 for errors).
   **File(s):** `src/validator_gateway/fastapi_integration/exception_handlers.py`
   **Acceptance:** A `NotFoundError` raised in a controller ends up as an HTTP 404 response body matching `ErrorResponse` shape, verified end-to-end via `TestClient`.
 
-- [ ] **P6-T3: `GatewayRoute` custom `APIRoute` (belt-and-suspenders)**
+- [x] **P6-T3: `GatewayRoute` custom `APIRoute` (belt-and-suspenders)**
   **Do:** Provide an optional `APIRoute` subclass that catches any `DomainError` that somehow escapes a route handler (e.g. a developer forgot to route a call through `gateway.handle()`) and still formats it correctly, so the guarantee holds even under partial misuse. This must be explicitly **opt-in** (`router = APIRouter(route_class=GatewayRoute)`), not silently monkey-patched onto the app.
   **File(s):** `src/validator_gateway/fastapi_integration/route.py`
   **Acceptance:** A route handler that raises `DomainError` directly (bypassing `gateway.handle()`) still returns a correctly formatted `ErrorResponse` when using `GatewayRoute`; a plain `APIRoute` in the same test app does not (proves the opt-in adds real value, not just decoration).
 
-- [ ] **P6-T4: PATCH/partial-update helper**
+- [x] **P6-T4: PATCH/partial-update helper**
   **Do:** `extract_patch_data(model: BaseModel) -> dict[str, Any]` thin wrapper over `model.model_dump(exclude_unset=True)`, exported from the FastAPI integration module with a docstring explaining the unset-vs-null problem from the design discussion, so developers don't have to rediscover it.
   **File(s):** `src/validator_gateway/fastapi_integration/dependency.py` (or a new `partial.py`)
   **Acceptance:** Test with a model where one field is explicitly `None` and another is omitted — only the omitted one is absent from the returned dict.

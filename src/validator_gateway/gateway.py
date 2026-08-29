@@ -15,6 +15,11 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
+class UnregisteredFallbackError(LookupError):
+    """Raised when a RedirectSpec names a fallback that was never registered
+    via ValidatorGateway.register_fallback()."""
+
+
 class ValidatorGateway(Generic[T]):
     """The single enforced call path into a controller.
 
@@ -37,6 +42,25 @@ class ValidatorGateway(Generic[T]):
         self.config = config or GatewayConfig()
         self._on_exception = on_exception
         self._recovery = recovery
+        self._fallbacks: dict[str, Callable[..., Coroutine[Any, Any, Any]]] = {}
+
+    def register_fallback(
+        self, name: str, target: Callable[..., Coroutine[Any, Any, Any]]
+    ) -> None:
+        """Register a redirect target under `name`. RedirectSpec.target values
+        resolve only through this allowlist — never via getattr on a free
+        string, importlib, or eval of policy data (see Design Decision 9)."""
+        self._fallbacks[name] = target
+
+    def resolve_fallback(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
+        try:
+            return self._fallbacks[name]
+        except KeyError:
+            raise UnregisteredFallbackError(
+                f"No fallback registered under {name!r}. Register one via "
+                "gateway.register_fallback(name, target) before a recovery "
+                "policy can redirect to it."
+            ) from None
 
     async def handle(
         self,
@@ -57,6 +81,12 @@ class ValidatorGateway(Generic[T]):
             return SuccessResponse(data=result)
         except DomainError as exc:
             self._notify(exc)
+            if self._recovery is not None:
+                try:
+                    result = await self._recovery.recover(exc, self, action, args, kwargs)
+                    return SuccessResponse(data=result)
+                except DomainError:
+                    pass
             return build_error_response(exc)
         except Exception as exc:  # noqa: BLE001 - intentional catch-all boundary
             hide = self.config.hide_internal_errors
