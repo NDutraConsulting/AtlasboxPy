@@ -2,38 +2,31 @@
 ValidatorGateway instances — success and failure alike.
 
 Unlike an `on_exception` hook (which only ever fires on failure — see
-default_logging_hook, still wired into both gateways in main.py for
-console-visible warnings/errors), this captures ALL traffic, giving
-visibility into what's actually moving across the gateways: which
-controller method was called, and whether it succeeded or failed.
+default_logging_hook, still wired into every gateway for console-visible
+warnings/errors), this captures ALL traffic: which gateway (identified by
+its source_json — url/method/caller_type, not just a class name), which
+controller method, which failure case it was classified as (or "success"),
+the actual request payload, and the actual JSON response envelope.
 
 Writes to logs/{YYYY-mm-dd}_validator_gateway.log (relative to this file,
 i.e. examples/fastapi_kanban/logs/), rolling over to a new file at midnight
-local time without needing a process restart. Each line carries the actual
-incoming request payload and the actual JSON response envelope handed back
-to the api_router — not just a controller/method/outcome summary — so you
-can see exactly what moved across the gateway in both directions.
+local time without needing a process restart.
 
-Each line is tagged with the gateway's own `source_info` (e.g.
-"board_validator_gateway.py") rather than the controller's class name —
-source_info is a property the caller supplies when constructing a
-*ValidatorGateway subclass (see validator_gateways/board_validator_gateway.py),
-not something inferred from the controller it happens to wrap.
+log_traffic() is called directly from each *ValidatorGateway subclass's own
+handle() override (see validator_gateways/board_validator_gateway.py) —
+logging is a guarantee the gateway makes about itself as part of its own
+contract, not a wrapper a caller in main.py has to remember to invoke.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Coroutine
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
-
-from validator_gateway import ValidatorGateway
-from validator_gateway.fastapi_integration import to_json_response
 
 _LOG_DIR = Path(__file__).parent / "logs"
 
@@ -76,7 +69,7 @@ class _DailyTrafficLogger:
 _traffic_logger = _DailyTrafficLogger(_LOG_DIR, "validator_gateway.log")
 
 
-def _to_jsonable(value: Any) -> Any:
+def to_jsonable(value: Any) -> Any:
     """Pydantic request models become their JSON body; anything else
     (path params like a board_id string) passes through as-is — both are
     already JSON-serializable."""
@@ -85,40 +78,21 @@ def _to_jsonable(value: Any) -> Any:
     return value
 
 
-async def handle_and_log(
-    gateway: ValidatorGateway[Any],
-    action: Callable[..., Coroutine[Any, Any, Any]],
-    *args: Any,
-    **kwargs: Any,
-):
-    """Drop-in replacement for the usual two-line route body:
-
-        result = await gateway.handle(action, ...)
-        return to_json_response(result)
-
-    Adds one line to logs/{date}_validator_gateway.log per call, carrying
-    the actual incoming request (the Pydantic payload's JSON body, plus any
-    path params) and the actual JSON response envelope handed back to the
-    api_router — the same dict to_json_response() serializes into the
-    JSONResponse body. The log line is tagged with the gateway's own
-    `source_info` (required on *ValidatorGateway subclasses), not the
-    controller's class name.
-    """
-    source_info = getattr(gateway, "source_info", type(gateway.controller).__name__)
-    method_name = action.__name__
-
-    request_payload: list[Any] = [_to_jsonable(a) for a in args]
-    if kwargs:
-        request_payload.append({k: _to_jsonable(v) for k, v in kwargs.items()})
-
-    result = await gateway.handle(action, *args, **kwargs)
-    response_payload = result.model_dump(mode="json")
-
+def log_traffic(
+    source_json: dict[str, str],
+    method_name: str,
+    case: str,
+    request_payload: Any,
+    response_payload: Any,
+) -> None:
+    """One line per gateway call: who called it (source_json), what was
+    called (method_name), how it was classified (case — "success" or a
+    FailureCase value), and the actual request/response JSON."""
     _traffic_logger.info(
-        "%s.%s request=%s response=%s",
-        source_info,
+        "source=%s method=%s case=%s request=%s response=%s",
+        json.dumps(source_json),
         method_name,
+        case,
         json.dumps(request_payload),
         json.dumps(response_payload),
     )
-    return to_json_response(result)

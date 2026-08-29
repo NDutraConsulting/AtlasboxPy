@@ -151,13 +151,12 @@ def test_static_feature_assets_are_served():
     assert css.status_code == 200
 
 
-def test_gateway_traffic_is_logged_success_and_error():
+def test_gateway_traffic_is_logged_with_source_json_method_and_case():
     """Every call through a gateway — not just failures — lands in
-    logs/{today}_validator_gateway.log (see logging_setup.handle_and_log),
-    carrying the actual request payload and the actual JSON response
-    envelope handed back to the api_router. Lines are tagged with the
-    gateway's own source_info (e.g. "board_validator_gateway.py"), not the
-    controller's class name."""
+    logs/{today}_validator_gateway.log, tagged with the gateway's required
+    source_json (real request url/method/caller_type — not a static
+    string), the controller method called, the classified FailureCase (or
+    "success"), and the actual request/response JSON."""
     client = TestClient(app)
     board = _create_board(client, name="Logged board")
     client.get("/api/boards/does-not-exist")  # a failing call, on purpose
@@ -169,13 +168,20 @@ def test_gateway_traffic_is_logged_success_and_error():
     # The log file persists across the whole test session (other tests also
     # create boards), so match on this test's own data, not just the method.
     create_line = next(line for line in lines if "Logged board" in line)
-    assert "boards_validator_gateway.py.create_board" in create_line
+    assert '"url": "/api/boards"' in create_line
+    assert '"method": "POST"' in create_line
+    assert '"caller_type": "api_route"' in create_line
+    assert "method=create_board" in create_line
+    assert "case=success" in create_line
     assert 'request=[{"name": "Logged board"}]' in create_line
     assert '"status": "success"' in create_line
     assert board["id"] in create_line  # the created board's id is in the logged response
 
-    not_found_line = next(line for line in lines if "board_validator_gateway.py.get_board" in line)
-    assert 'request=["does-not-exist"]' in not_found_line
+    not_found_line = next(line for line in lines if "does-not-exist" in line)
+    assert '"url": "/api/boards/does-not-exist"' in not_found_line
+    assert '"method": "GET"' in not_found_line
+    assert "method=get_board" in not_found_line
+    assert "case=board_not_found" in not_found_line  # the classified FailureCase, not just "error"
     assert '"status": "error"' in not_found_line
     assert '"code": "not_found"' in not_found_line
 
@@ -239,3 +245,55 @@ def test_simulate_db_error_toggle_causes_upstream_error_then_recovers():
 
     recovered = client.post("/api/boards", json={"name": "Back online"})
     assert recovered.status_code == 200
+
+
+def test_get_board_redirects_to_degraded_gateway_when_db_is_down():
+    """BoardValidatorGateway's UPSTREAM_UNAVAILABLE case redirects a failed
+    get_board read to DegradedBoardValidatorGateway — a real, different
+    ValidatorGateway — instead of just reporting the outage. Writes get no
+    such treatment: there's nothing sensible to "degrade" a write to."""
+    client = TestClient(app)
+    board = _create_board(client, name="Degrade me")
+
+    try:
+        client.post("/api/debug/db-connection", json={"enabled": True})
+
+        degraded = client.get(f"/api/boards/{board['id']}")
+        assert degraded.status_code == 200  # NOT 502 — the redirect absorbed the failure
+        data = degraded.json()["data"]
+        assert data["id"] == board["id"]
+        assert data["degraded"] is True
+        assert data["columns"] == []
+
+        # A write to the same board still just reports the outage.
+        write_while_down = client.delete(f"/api/boards/{board['id']}")
+        assert write_while_down.status_code == 502
+        assert write_while_down.json()["error"]["code"] == "upstream_error"
+    finally:
+        client.post("/api/debug/db-connection", json={"enabled": False})
+
+
+def test_card_validation_failure_includes_scenario_specific_hint():
+    """CARD_VALIDATION_FAILED's custom messaging (defined in
+    board_validator_gateway.py's match/case) augments the raw exception
+    message rather than just passing it through verbatim."""
+    client = TestClient(app)
+    board = _create_board(client)
+    column_id = board["columns"][0]["id"]
+
+    resp = client.post(
+        f"/api/boards/{board['id']}/cards",
+        json={"column_id": column_id, "title": "way too long a title"},
+    )
+    message = resp.json()["error"]["message"]
+    assert message.startswith("Card title must be at most 10 characters")  # the raw exc.message
+    assert "hint: card titles are capped at 10 characters in this demo" in message  # the addition
+
+
+def test_board_name_validation_failure_includes_scenario_specific_hint():
+    """Same pattern in boards_validator_gateway.py's BOARD_NAME_INVALID case."""
+    client = TestClient(app)
+    resp = client.post("/api/boards", json={"name": "   "})
+    message = resp.json()["error"]["message"]
+    assert message.startswith("Board name must not be empty")  # the raw exc.message
+    assert "hint: every board starts with 3 default columns" in message  # the addition
