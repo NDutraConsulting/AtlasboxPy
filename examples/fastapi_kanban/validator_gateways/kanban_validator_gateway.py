@@ -1,6 +1,6 @@
 """The single gateway for the kanban feature — wraps KanbanController,
-which is itself the only class allowed to orchestrate BoardService and
-CardService. Built on validator_gateway.classifying.ClassifyingValidatorGateway
+which wraps KanbanService (owner of the whole board/column/card
+aggregate). Built on validator_gateway.classifying.ClassifyingValidatorGateway
 — that class owns the try/except/severity-fallback/logging mechanics and
 can't be instantiated without _severity_fallback() and _resolve()
 implemented. Everything below is specific to THIS feature: what a failure
@@ -18,8 +18,8 @@ from validator_gateway.classifying import ClassifyingValidatorGateway, SourceJso
 from validator_gateway.responses import build_error_response
 
 from ..controllers.kanban_controller import KanbanController
-from ..services import BoardService, CardService
-from ..services.card_service import MAX_TITLE_LENGTH
+from ..services import KanbanService
+from ..services.kanban_service import MAX_TITLE_LENGTH
 from .degraded_board_validator_gateway import DegradedBoardValidatorGateway
 
 
@@ -45,7 +45,7 @@ class FailureCase(Enum):
 
 
 class KanbanValidatorGateway(ClassifyingValidatorGateway[KanbanController]):
-    """Constructs and wraps a KanbanController around the two services.
+    """Constructs and wraps a KanbanController around KanbanService.
     Fail-fast (no recovery=), per Design Decision 8 — a client is waiting.
 
     `source_json` is required, not inferred: the caller (an api_route in
@@ -59,11 +59,9 @@ class KanbanValidatorGateway(ClassifyingValidatorGateway[KanbanController]):
         "upstream_error": FailureCase.UPSTREAM_UNAVAILABLE,
     }
 
-    def __init__(
-        self, board_service: BoardService, card_service: CardService, *, source_json: SourceJson
-    ) -> None:
+    def __init__(self, service: KanbanService, *, source_json: SourceJson) -> None:
         super().__init__(
-            KanbanController(board_service, card_service),
+            KanbanController(service),
             source_json=source_json,
             on_exception=default_logging_hook(),
         )

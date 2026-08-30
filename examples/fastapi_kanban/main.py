@@ -11,10 +11,10 @@ Backend layering:
 Each api_route below: validates its body (validation.py) before touching
 anything else, constructs a fresh KanbanValidatorGateway declaring its own
 SourceJson (this route's real URL and REST method), and calls
-gateway.handle(). The gateway wraps KanbanController, the only class
-allowed to orchestrate BoardService and CardService — see
-controllers/kanban_controller.py. Services never call each other or a
-controller; see services/board_service.py and services/card_service.py.
+gateway.handle(). The gateway wraps KanbanController, a thin translation
+layer over KanbanService — the single service owning the whole board/
+column/card aggregate, since those three are one bounded context, not
+three independent ones. See services/kanban_service.py.
 
 Run it with:
     pip install -e ".[dev]"   # needs sqlalchemy + aiosqlite, in the dev extra
@@ -51,7 +51,7 @@ from .models import (
     SimulateDbErrorRequest,
     UpdateCardRequest,
 )
-from .services import BoardService, CardService
+from .services import KanbanService
 from .services.db_simulation import set_simulation
 from .validation import validate_body
 from .validator_gateways import KanbanValidatorGateway, SourceJson
@@ -77,13 +77,10 @@ def create_app(session_factory: SessionFactory | None = None) -> Starlette:
         engine = make_engine(f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
         session_factory = make_session_factory(engine)
 
-    board_service = BoardService(session_factory)
-    card_service = CardService(session_factory)
+    service = KanbanService(session_factory)
 
     def get_gateway(request: Request) -> KanbanValidatorGateway:
-        return KanbanValidatorGateway(
-            board_service, card_service, source_json=_source_json(request)
-        )
+        return KanbanValidatorGateway(service, source_json=_source_json(request))
 
     async def create_board(request: Request) -> JSONResponse:
         try:

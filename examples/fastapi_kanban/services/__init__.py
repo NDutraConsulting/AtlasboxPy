@@ -1,10 +1,8 @@
-from .board_service import BoardService
-from .card_service import CardService
+from .kanban_service import KanbanService
 from .results import ServiceResult, ServiceResultData, ServiceStatus
 
 __all__ = [
-    "BoardService",
-    "CardService",
+    "KanbanService",
     "ServiceResult",
     "ServiceResultData",
     "ServiceStatus",
