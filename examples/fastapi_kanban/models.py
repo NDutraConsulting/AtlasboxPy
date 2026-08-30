@@ -1,3 +1,8 @@
+"""Request DTOs — the shapes the "validation" layer (validation.py) checks
+incoming JSON bodies against, before a route ever calls the gateway.
+Response shapes are plain dicts assembled by KanbanController; there's no
+dedicated output model layer in this demo."""
+
 from pydantic import BaseModel
 
 
@@ -26,29 +31,4 @@ class MoveCardRequest(BaseModel):
 
 class SimulateDbErrorRequest(BaseModel):
     enabled: bool
-
-
-class CardOut(BaseModel):
-    id: str
-    title: str
-    description: str = ""
-    column_id: str
-
-
-class ColumnOut(BaseModel):
-    id: str
-    name: str
-    cards: list[CardOut] = []
-
-
-class BoardOut(BaseModel):
-    id: str
-    name: str
-    columns: list[ColumnOut] = []
-
-
-class BoardSummary(BaseModel):
-    id: str
-    name: str
-    column_count: int
-    card_count: int
+    mode: str = "error"  # "error" or "timeout"

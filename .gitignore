@@ -12,3 +12,5 @@ build/
 htmlcov/
 .DS_Store
 logs/
+*.db
+*.db-journal

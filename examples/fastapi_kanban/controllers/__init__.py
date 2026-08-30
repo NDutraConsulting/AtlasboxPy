@@ -1,5 +1,4 @@
-from .board_controller import BoardController
-from .boards_controller import BoardsController
 from .degraded_board_controller import DegradedBoardController
+from .kanban_controller import KanbanController
 
-__all__ = ["BoardController", "BoardsController", "DegradedBoardController"]
+__all__ = ["DegradedBoardController", "KanbanController"]

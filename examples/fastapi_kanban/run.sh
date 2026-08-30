@@ -19,9 +19,11 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
-if ! python3 -c "import fastapi, validator_gateway" >/dev/null 2>&1; then
-  echo "Installing validator_gateway[fastapi] into $VENV_DIR..."
-  pip install -q -e "$REPO_ROOT[fastapi]"
+# This demo needs sqlalchemy/aiosqlite/greenlet too (Starlette + SQLite
+# backend) — those live in the `dev` extra, not `fastapi`.
+if ! python3 -c "import fastapi, sqlalchemy, aiosqlite, greenlet, validator_gateway" >/dev/null 2>&1; then
+  echo "Installing validator_gateway[dev] into $VENV_DIR..."
+  pip install -q -e "$REPO_ROOT[dev]"
 fi
 
 # uvicorn needs `examples.fastapi_kanban.main:app` to be importable, which

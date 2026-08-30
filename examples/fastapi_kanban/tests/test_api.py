@@ -1,14 +1,35 @@
 """API-level tests for the Kanban demo. The static frontend (HTML/CSS/JS)
 is exercised manually via a browser and via a live uvicorn + curl pass —
-pytest here covers the validator_gateway-backed REST API and static-file
-serving, not DOM behavior."""
+pytest here covers the Starlette + SQLite-backed REST API, not DOM
+behavior.
+
+Each test gets its own fresh in-memory SQLite database via the `client`
+fixture — full isolation, no state bleeding between tests (unlike the
+shared traffic log file, which persists across the whole test session and
+is handled separately, by matching on each test's own unique data)."""
 
 from datetime import datetime
 
-from fastapi.testclient import TestClient
+import pytest
+from sqlalchemy.pool import StaticPool
+from starlette.testclient import TestClient
 
+from examples.fastapi_kanban.db import init_db, make_engine, make_session_factory
 from examples.fastapi_kanban.logging_setup import _LOG_DIR
-from examples.fastapi_kanban.main import app
+from examples.fastapi_kanban.main import create_app
+from examples.fastapi_kanban.services.db_simulation import set_simulation
+
+
+@pytest.fixture
+async def client():
+    engine = make_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    await init_db(engine)
+    app = create_app(session_factory=make_session_factory(engine))
+    set_simulation(None)
+    with TestClient(app) as test_client:
+        yield test_client
+    set_simulation(None)
+    await engine.dispose()
 
 
 def _create_board(client: TestClient, name: str = "Launch plan") -> dict:
@@ -17,22 +38,19 @@ def _create_board(client: TestClient, name: str = "Launch plan") -> dict:
     return resp.json()["data"]
 
 
-def test_create_board_gets_three_default_columns():
-    client = TestClient(app)
+def test_create_board_gets_three_default_columns(client):
     board = _create_board(client)
     assert len(board["columns"]) == 3
     assert [c["name"] for c in board["columns"]] == ["To Do", "In Progress", "Done"]
 
 
-def test_create_board_rejects_empty_name():
-    client = TestClient(app)
+def test_create_board_rejects_empty_name(client):
     resp = client.post("/api/boards", json={"name": "   "})
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "validation_failed"
 
 
-def test_list_boards_reflects_column_and_card_counts():
-    client = TestClient(app)
+def test_list_boards_reflects_column_and_card_counts(client):
     board = _create_board(client)
     column_id = board["columns"][0]["id"]
     client.post(f"/api/boards/{board['id']}/cards", json={"column_id": column_id, "title": "Task 1"})
@@ -44,15 +62,13 @@ def test_list_boards_reflects_column_and_card_counts():
     assert summary["card_count"] == 1
 
 
-def test_get_missing_board_returns_404():
-    client = TestClient(app)
+def test_get_missing_board_returns_404(client):
     resp = client.get("/api/boards/does-not-exist")
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "not_found"
 
 
-def test_add_column_and_reject_duplicate_name():
-    client = TestClient(app)
+def test_add_column_and_reject_duplicate_name(client):
     board = _create_board(client)
 
     resp = client.post(f"/api/boards/{board['id']}/columns", json={"name": "Blocked"})
@@ -64,8 +80,7 @@ def test_add_column_and_reject_duplicate_name():
     assert dup.json()["error"]["code"] == "conflict"
 
 
-def test_delete_column_with_cards_conflicts():
-    client = TestClient(app)
+def test_delete_column_with_cards_conflicts(client):
     board = _create_board(client)
     column_id = board["columns"][0]["id"]
     client.post(f"/api/boards/{board['id']}/cards", json={"column_id": column_id, "title": "Task"})
@@ -75,8 +90,7 @@ def test_delete_column_with_cards_conflicts():
     assert resp.json()["error"]["code"] == "conflict"
 
 
-def test_delete_empty_column_succeeds():
-    client = TestClient(app)
+def test_delete_empty_column_succeeds(client):
     board = _create_board(client)
     column_id = board["columns"][-1]["id"]  # "Done" — created empty
 
@@ -87,8 +101,7 @@ def test_delete_empty_column_succeeds():
     assert column_id not in [c["id"] for c in refreshed["columns"]]
 
 
-def test_full_card_lifecycle_create_update_move_delete():
-    client = TestClient(app)
+def test_full_card_lifecycle_create_update_move_delete(client):
     board = _create_board(client)
     todo_id = board["columns"][0]["id"]
     doing_id = board["columns"][1]["id"]
@@ -100,6 +113,7 @@ def test_full_card_lifecycle_create_update_move_delete():
     assert created.status_code == 200
     card = created.json()["data"]
     assert card["column_id"] == todo_id
+    assert card["board_id"] == board["id"]
 
     updated = client.patch(f"/api/cards/{card['id']}", json={"title": "Doc final"})
     assert updated.status_code == 200
@@ -117,8 +131,26 @@ def test_full_card_lifecycle_create_update_move_delete():
     assert missing.status_code == 404
 
 
-def test_create_card_rejects_empty_title():
-    client = TestClient(app)
+def test_move_card_to_column_on_a_different_board_is_rejected(client):
+    """CardService trusts the column_id it's given; the controller is the
+    one that validates it belongs to the card's own board, via
+    BoardService.column_exists() — this proves that cross-entity check
+    actually runs."""
+    board_a = _create_board(client, name="Board A")
+    board_b = _create_board(client, name="Board B")
+    card = client.post(
+        f"/api/boards/{board_a['id']}/cards",
+        json={"column_id": board_a["columns"][0]["id"], "title": "x"},
+    ).json()["data"]
+
+    resp = client.post(
+        f"/api/cards/{card['id']}/move", json={"column_id": board_b["columns"][0]["id"]}
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_found"
+
+
+def test_create_card_rejects_empty_title(client):
     board = _create_board(client)
     column_id = board["columns"][0]["id"]
     resp = client.post(
@@ -127,37 +159,42 @@ def test_create_card_rejects_empty_title():
     assert resp.status_code == 422
 
 
-def test_delete_board_removes_it():
-    client = TestClient(app)
+def test_create_card_on_unknown_column_is_not_found(client):
+    board = _create_board(client)
+    resp = client.post(
+        f"/api/boards/{board['id']}/cards", json={"column_id": "nope", "title": "x"}
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_found"
+
+
+def test_delete_board_removes_it(client):
     board = _create_board(client)
     resp = client.delete(f"/api/boards/{board['id']}")
     assert resp.status_code == 200
     assert client.get(f"/api/boards/{board['id']}").status_code == 404
 
 
-def test_static_index_page_is_served():
-    client = TestClient(app)
+def test_static_index_page_is_served(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "Kanban Boards" in resp.text
 
 
-def test_static_feature_assets_are_served():
-    client = TestClient(app)
+def test_static_feature_assets_are_served(client):
     js = client.get("/features/board/board-controller.js")
     assert js.status_code == 200
     css = client.get("/features/boards/boards.css")
     assert css.status_code == 200
 
 
-def test_gateway_traffic_is_logged_with_source_json_method_and_case():
-    """Every call through a gateway — not just failures — lands in
+def test_gateway_traffic_is_logged_with_source_json_method_and_case(client):
+    """Every call through the gateway — not just failures — lands in
     logs/{today}_validator_gateway.log, tagged with the gateway's required
     source_json (real request url/method/caller_type — not a static
     string), the controller method called, the classified FailureCase (or
     "success"), and the actual request/response JSON."""
-    client = TestClient(app)
     board = _create_board(client, name="Logged board")
     client.get("/api/boards/does-not-exist")  # a failing call, on purpose
 
@@ -182,13 +219,12 @@ def test_gateway_traffic_is_logged_with_source_json_method_and_case():
     assert '"url": "/api/boards/does-not-exist"' in not_found_line
     assert '"method": "GET"' in not_found_line
     assert "method=get_board" in not_found_line
-    assert "case=board_not_found" in not_found_line  # the classified FailureCase, not just "error"
+    assert "case=not_found" in not_found_line  # the classified FailureCase, not just "error"
     assert '"status": "error"' in not_found_line
     assert '"code": "not_found"' in not_found_line
 
 
-def test_card_title_over_ten_characters_is_rejected():
-    client = TestClient(app)
+def test_card_title_over_ten_characters_is_rejected(client):
     board = _create_board(client)
     column_id = board["columns"][0]["id"]
 
@@ -201,8 +237,7 @@ def test_card_title_over_ten_characters_is_rejected():
     assert "10 characters" in resp.json()["error"]["message"]
 
 
-def test_card_title_at_exactly_ten_characters_is_allowed():
-    client = TestClient(app)
+def test_card_title_at_exactly_ten_characters_is_allowed(client):
     board = _create_board(client)
     column_id = board["columns"][0]["id"]
 
@@ -214,8 +249,7 @@ def test_card_title_at_exactly_ten_characters_is_allowed():
     assert resp.json()["data"]["title"] == "1234567890"
 
 
-def test_updating_a_card_title_past_ten_characters_is_rejected():
-    client = TestClient(app)
+def test_updating_a_card_title_past_ten_characters_is_rejected(client):
     board = _create_board(client)
     column_id = board["columns"][0]["id"]
     card = client.post(
@@ -227,58 +261,60 @@ def test_updating_a_card_title_past_ten_characters_is_rejected():
     assert resp.json()["error"]["code"] == "validation_failed"
 
 
-def test_simulate_db_error_toggle_causes_upstream_error_then_recovers():
-    client = TestClient(app)
-    try:
-        toggled_on = client.post("/api/debug/db-connection", json={"enabled": True})
-        assert toggled_on.status_code == 200
-        assert toggled_on.json() == {"simulate_db_error": True}
+def test_simulate_db_error_toggle_causes_upstream_error_then_recovers(client):
+    toggled_on = client.post("/api/debug/db-connection", json={"enabled": True, "mode": "error"})
+    assert toggled_on.status_code == 200
+    assert toggled_on.json() == {"simulate_db_error": True, "mode": "error"}
 
-        while_down = client.post("/api/boards", json={"name": "Should fail"})
-        assert while_down.status_code == 502
-        assert while_down.json()["error"]["code"] == "upstream_error"
+    while_down = client.post("/api/boards", json={"name": "Should fail"})
+    assert while_down.status_code == 502
+    assert while_down.json()["error"]["code"] == "upstream_error"
 
-        # Reads are affected too, not just writes.
-        list_while_down = client.get("/api/boards")
-        assert list_while_down.status_code == 502
-    finally:
-        client.post("/api/debug/db-connection", json={"enabled": False})
+    # Reads are affected too, not just writes.
+    list_while_down = client.get("/api/boards")
+    assert list_while_down.status_code == 502
 
+    client.post("/api/debug/db-connection", json={"enabled": False})
     recovered = client.post("/api/boards", json={"name": "Back online"})
     assert recovered.status_code == 200
 
 
-def test_get_board_redirects_to_degraded_gateway_when_db_is_down():
-    """BoardValidatorGateway's UPSTREAM_UNAVAILABLE case redirects a failed
+def test_simulate_db_timeout_also_maps_to_upstream_error(client):
+    client.post("/api/debug/db-connection", json={"enabled": True, "mode": "timeout"})
+    resp = client.post("/api/boards", json={"name": "x"})
+    assert resp.status_code == 502
+    assert resp.json()["error"]["code"] == "upstream_error"
+    client.post("/api/debug/db-connection", json={"enabled": False})
+
+
+def test_get_board_redirects_to_degraded_gateway_when_db_is_down(client):
+    """KanbanValidatorGateway's UPSTREAM_UNAVAILABLE case redirects a failed
     get_board read to DegradedBoardValidatorGateway — a real, different
     ValidatorGateway — instead of just reporting the outage. Writes get no
     such treatment: there's nothing sensible to "degrade" a write to."""
-    client = TestClient(app)
     board = _create_board(client, name="Degrade me")
 
-    try:
-        client.post("/api/debug/db-connection", json={"enabled": True})
+    client.post("/api/debug/db-connection", json={"enabled": True})
 
-        degraded = client.get(f"/api/boards/{board['id']}")
-        assert degraded.status_code == 200  # NOT 502 — the redirect absorbed the failure
-        data = degraded.json()["data"]
-        assert data["id"] == board["id"]
-        assert data["degraded"] is True
-        assert data["columns"] == []
+    degraded = client.get(f"/api/boards/{board['id']}")
+    assert degraded.status_code == 200  # NOT 502 — the redirect absorbed the failure
+    data = degraded.json()["data"]
+    assert data["id"] == board["id"]
+    assert data["degraded"] is True
+    assert data["columns"] == []
 
-        # A write to the same board still just reports the outage.
-        write_while_down = client.delete(f"/api/boards/{board['id']}")
-        assert write_while_down.status_code == 502
-        assert write_while_down.json()["error"]["code"] == "upstream_error"
-    finally:
-        client.post("/api/debug/db-connection", json={"enabled": False})
+    # A write to the same board still just reports the outage.
+    write_while_down = client.delete(f"/api/boards/{board['id']}")
+    assert write_while_down.status_code == 502
+    assert write_while_down.json()["error"]["code"] == "upstream_error"
+
+    client.post("/api/debug/db-connection", json={"enabled": False})
 
 
-def test_card_validation_failure_includes_scenario_specific_hint():
-    """CARD_VALIDATION_FAILED's custom messaging (defined in
-    board_validator_gateway.py's match/case) augments the raw exception
+def test_card_validation_failure_includes_scenario_specific_hint(client):
+    """The VALIDATION_FAILED case's custom messaging (defined in
+    kanban_validator_gateway.py's match/case) augments the raw exception
     message rather than just passing it through verbatim."""
-    client = TestClient(app)
     board = _create_board(client)
     column_id = board["columns"][0]["id"]
 
@@ -291,9 +327,9 @@ def test_card_validation_failure_includes_scenario_specific_hint():
     assert "hint: card titles are capped at 10 characters in this demo" in message  # the addition
 
 
-def test_board_name_validation_failure_includes_scenario_specific_hint():
-    """Same pattern in boards_validator_gateway.py's BOARD_NAME_INVALID case."""
-    client = TestClient(app)
+def test_board_name_validation_failure_includes_scenario_specific_hint(client):
+    """Same VALIDATION_FAILED case, disambiguated by message content since
+    board-name and card-title validation share the same DomainError code."""
     resp = client.post("/api/boards", json={"name": "   "})
     message = resp.json()["error"]["message"]
     assert message.startswith("Board name must not be empty")  # the raw exc.message
