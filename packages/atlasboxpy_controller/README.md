@@ -25,6 +25,8 @@ Most projects end up with error handling that's correct in spirit but inconsiste
 
 ## Installation
 
+> **This is a prototype/example project — it is not published to PyPI and there's no plan to.** The `pip install` commands below are illustrative only; install from a local clone (see below) to actually use it.
+
 ```bash
 pip install atlasboxpy_controller
 ```

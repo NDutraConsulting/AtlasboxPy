@@ -6,6 +6,8 @@ with no changes anywhere else in your repository subclass.
 
 ## Install
 
+> **This is a prototype/example project — it is not published to PyPI and there's no plan to.** The `pip install` commands below are illustrative only; install from a local clone with `pip install -e .` to actually use it.
+
 ```bash
 pip install atlasboxpy-repository
 # or, if you want the Redis driver available:
