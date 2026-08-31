@@ -273,6 +273,26 @@ around that same extract-then-format pattern) then uses
 
 ```python
 # examples/fastapi_kanban/main.py
+async def _call(request: Request, method: _ControllerMethod) -> JSONResponse:
+    """Extracts `props` from the request, calls a KanbanController method
+    with it, logs the request/response to the traffic log, and converts
+    the result to a JSONResponse. Every request that reaches a controller
+    passes through here — the one place prop-extraction and logging live,
+    instead of every route repeating them."""
+    props = await extract_api_request(request)
+    result: SuccessResponse[Any] | ErrorResponse = await method(props)
+    status = "success" if isinstance(result, SuccessResponse) else result.error.code
+    _traffic_log.info(
+        "source=%s method=%s status=%s request=%s response=%s",
+        json.dumps({"url": request.url.path, "method": request.method, "caller_type": "api_route"}),
+        method.__name__,
+        status,
+        json.dumps(props),
+        json.dumps(result.model_dump(mode="json")),
+    )
+    return to_json_response(result)
+
+
 async def move_card(request: Request) -> JSONResponse:
     return await _call(request, controller.move_card)
 ```
