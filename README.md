@@ -142,7 +142,15 @@ class KanbanRepository(BaseRepository):
 
 Swapping `cache_driver`/`cache_env` from an in-memory dict to Redis is a
 two-constant change — `KanbanService` and `KanbanController` never know a
-cache exists, let alone which technology backs it.
+cache exists, let alone which technology backs it. Those two constants
+are also deployment decisions with nothing to do with `KanbanRepository`'s
+own code: `BARE_METAL` keeps the cache in-process — nothing shared,
+nothing reachable over the network, right for a single instance or an
+agent running locally; `REDIS` with `CacheEnv.REMOTE` makes it a cache
+every node/replica actually shares (they all point at the same
+`REDIS_URL`), and since that's an environment variable, relocating it to
+a different cloud account, region, or a network-isolated instance for
+security reasons is a config change, not a code change.
 
 ## One standardized response, read two ways
 

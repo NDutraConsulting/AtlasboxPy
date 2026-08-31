@@ -57,6 +57,20 @@ managed one reached via the `REDIS_URL` environment variable) changes
 nothing about how `UserRepository` calls `self.cache` — only what happens
 underneath.
 
+These two constants map directly onto deployment decisions that have
+nothing to do with the repository's own code:
+
+- **`BARE_METAL`** — no network call, nothing to share, nothing to leak.
+  Right for a single process that never needs another instance to see its
+  cached data — a local dev loop, a one-off script, an agent running
+  in-process with nothing else that needs to read its cache.
+- **`REDIS` + `CacheEnv.REMOTE`** — the cache is now reachable by every
+  node/replica that shares the same `REDIS_URL`, which is what makes it
+  an actual shared cache instead of N independent ones. Since that
+  endpoint is just an environment variable, moving it to a different
+  cloud account, region, or a network-isolated instance for security or
+  compliance reasons is a config change, not a code change.
+
 ## Why a base class instead of a decorator or a standalone cache client
 
 The cache decision (which technology, TTLs, key format) belongs to
