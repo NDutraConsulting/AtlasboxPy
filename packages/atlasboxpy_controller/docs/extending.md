@@ -111,7 +111,7 @@ a client, config):
 class UserController(BaseController):
     def __init__(self) -> None:
         super().__init__()
-        self.user_service = UserService()  # resolves its own dependencies
+        self.user_service = UserService()
 ```
 
 How `UserService` resolves what it needs is up to your app — a config

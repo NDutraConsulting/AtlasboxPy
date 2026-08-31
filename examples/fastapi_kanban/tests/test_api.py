@@ -352,7 +352,7 @@ async def test_get_board_redirects_to_degraded_gateway_when_db_is_down():
 
         with TestClient(create_app(session_factory=session_factory)) as reader:
             degraded = reader.get(f"/api/boards/{board['id']}")
-            assert degraded.status_code == 200  # NOT 502 — the fallback absorbed the failure
+            assert degraded.status_code == 207  # NOT 502 — the fallback absorbed the failure
             data = degraded.json()["data"]
             assert data["id"] == board["id"]
             assert data["degraded"] is True

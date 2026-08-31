@@ -248,12 +248,12 @@ from "the backend is broken":
 }
 ```
 
-**Degraded success** (upstream outage on a read, reported as data instead of an error):
+**Degraded success** (upstream outage on a read, reported as data instead of an error) — `207` (Multi-Status), not a plain `200`, since the caller got *something*, but not the real thing it asked for:
 
 ```json
 {
   "status": "success",
-  "response_code": 200,
+  "response_code": 207,
   "data": {
     "id": "b7a2d0aa-...",
     "name": "(unavailable — degraded response)",

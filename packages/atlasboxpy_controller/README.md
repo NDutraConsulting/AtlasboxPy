@@ -75,7 +75,7 @@ class GetUserProps(BaseModel):
 class UserController(BaseController):
     def __init__(self) -> None:
         super().__init__()
-        self.user_service = UserService()  # resolves its own dependencies
+        self.user_service = UserService()
 
     async def get_user(self, props: dict):
         payload = validate_props(GetUserProps, props)

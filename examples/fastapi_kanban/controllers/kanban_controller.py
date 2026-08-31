@@ -100,12 +100,13 @@ class KanbanController(BaseController):
         response = self._response_for(await self.service.get_board(payload.board_id))
         if isinstance(response, ErrorResponse) and response.error.code == "upstream_error":
             return SuccessResponse(
+                response_code=207,
                 data={
                     "id": payload.board_id,
                     "name": "(unavailable — degraded response)",
                     "columns": [],
                     "degraded": True,
-                }
+                },
             )
         return response
 
