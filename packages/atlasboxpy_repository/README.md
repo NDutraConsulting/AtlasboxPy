@@ -83,6 +83,13 @@ repository has to agree on.
 See `atlasboxpy_repository.base_repository` for the full implementation —
 it's under 130 lines, including docstrings.
 
+## Documentation
+
+- [`docs/decisions.md`](docs/decisions.md) — ADRs for the non-obvious
+  choices (base-class subclassing over a decorator, typed `CacheDriver`/
+  `CacheEnv` Enums, the 300s Redis TTL), each with alternatives considered
+  and performance/portability/debuggability/evolvability trade-offs
+
 ## License
 
 Apache License 2.0 — see `LICENSE` and `NOTICE`.

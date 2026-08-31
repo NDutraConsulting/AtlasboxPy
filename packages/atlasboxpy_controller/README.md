@@ -148,6 +148,7 @@ The core package has no dependency on FastAPI or any other framework, so this wo
 - [`docs/quickstart.md`](docs/quickstart.md) — install and stand up your first endpoint
 - [`docs/architecture.md`](docs/architecture.md) — the request lifecycle and why `BaseController` wraps method calls structurally instead of by convention
 - [`docs/extending.md`](docs/extending.md) — custom exceptions, `hide_internal_errors`, OpenAPI registry integration
+- [`docs/decisions.md`](docs/decisions.md) — ADRs for the non-obvious choices (structural wrapping, the response envelope, `validate_props`, controller-constructs-its-own-service), each with alternatives considered and performance/portability/debuggability/evolvability trade-offs
 
 ## License
 

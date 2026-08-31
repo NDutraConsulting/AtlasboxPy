@@ -18,6 +18,34 @@ related packages, not PEP 420 namespace packages).
   a `BaseRepository` base class with a pluggable, read-through cache —
   swap between an in-memory dict and Redis via two config constants.
 
+## Which one do I need?
+
+```
+Building something that talks to a database and might need caching?
+                              │
+                ┌─────────────┴─────────────┐
+                │                            │
+   Need one consistent response shape   Need a pluggable, read-through
+   across REST/worker/agent callers,   cache in front of your data
+   with error handling that's         access, without hand-rolling
+   structural, not opt-in per route?  get/set/invalidate plumbing?
+                │                            │
+                ▼                            ▼
+   atlasboxpy_controller               atlasboxpy_repository
+   (BaseController)                    (BaseRepository)
+                │                            │
+                └─────────────┬──────────────┘
+                               ▼
+             Most real apps use both together — see
+             examples/fastapi_kanban for the full stack.
+```
+
+Each package's own `docs/decisions.md` has the full ADRs — what was
+considered and rejected for its non-obvious choices, with
+performance/portability/debuggability/evolvability trade-offs for each:
+[`atlasboxpy_controller`](packages/atlasboxpy_controller/docs/decisions.md) ·
+[`atlasboxpy_repository`](packages/atlasboxpy_repository/docs/decisions.md).
+
 ## Examples
 
 [`examples/`](examples/) has runnable demo apps exercising both packages
