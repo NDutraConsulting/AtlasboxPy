@@ -103,14 +103,15 @@ implicit in a separate route file.
 query and every persistence decision: whether to reach into
 `self.cache` or hit the database is decided here, and only here, not by
 `KanbanService` above it. It's also the *only* class in this chain that
-knows `SessionFactory` (a SQLAlchemy type) exists at all — resolving one
-with no argument required, via `db.py`'s `get_default_session_factory()`,
-the same shared-process-state pattern `db_simulation.py` already uses for
-its "is the DB down right now?" flag rather than threading a value through
-every constructor between the app entry point and here. `get_board` — the
-one expensive assembled read (a board, its columns, every card nested
-inside them) — goes through `self.cache`, and every write invalidates that
-board's cache entry:
+knows `SessionFactory` (a SQLAlchemy type) exists at all — and it doesn't
+hold one as state, either: `_session()` resolves `get_default_session_factory()`
+fresh on every call (the same shared-process-state pattern `db_simulation.py`
+already uses for its "is the DB down right now?" flag, resolved fresh
+there too, rather than a value threaded through every constructor between
+the app entry point and here, or cached and left to go stale). `get_board`
+— the one expensive assembled read (a board, its columns, every card
+nested inside them) — goes through `self.cache`, and every write
+invalidates that board's cache entry:
 
 ```python
 # examples/fastapi_kanban/repositories/kanban_repository.py
@@ -118,9 +119,11 @@ cache_driver: CacheDriver = CacheDriver.BARE_METAL      # CacheEnv.REDIS
 cache_env: CacheEnv = CacheEnv.LOCAL                    # CacheEnv.REMOTE
 
 class KanbanRepository(BaseRepository):
-    def __init__(self, session_factory: SessionFactory | None = None) -> None:
+    def __init__(self) -> None:
         super().__init__(cache_driver=cache_driver, cache_env=cache_env)
-        self._session_factory = session_factory or get_default_session_factory()
+
+    def _session(self) -> AbstractAsyncContextManager[AsyncSession]:
+        return session_scope(active_session_factory(get_default_session_factory()))
 
     async def get_board(self, board_id: str) -> dict[str, Any] | None:
         cache_key = self._board_cache_key(board_id)
