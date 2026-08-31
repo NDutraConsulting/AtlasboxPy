@@ -15,7 +15,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 from starlette.requests import Request
-from validator_gateway import ValidationFailedError
+from atlasboxpy_controller import ValidationFailedError
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 

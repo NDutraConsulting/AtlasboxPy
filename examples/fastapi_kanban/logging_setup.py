@@ -1,17 +1,15 @@
-"""Attaches a daily-rotating file handler to the "validator_gateway.traffic"
-logger — the logger every ClassifyingValidatorGateway subclass writes to
-directly via `logging.getLogger("validator_gateway.traffic").info(...)`
-(see validator_gateways/classifying_validator_gateway.py).
+"""Attaches a daily-rotating file handler to the "atlasboxpy_controller.traffic"
+logger — the logger main.py's `_call()` helper writes to directly, via
+`logging.getLogger("atlasboxpy_controller.traffic").info(...)`, once per
+request that reaches a controller.
 
-This is a deliberate separation: the gateway decides WHAT gets logged and
-WHEN (every call, success and failure, via a plain stdlib logging call —
-its own guarantee, not a wrapper main.py has to remember to invoke); this
-module decides WHERE that ends up. A different app reusing
-ClassifyingValidatorGateway could point the same logger at plain stdout,
-syslog, whatever — without touching the gateway at all.
+This is a deliberate separation: `_call()` decides WHAT gets logged and
+WHEN (every call, success and failure alike); this module decides WHERE
+that ends up. A different app could point the same logger at plain
+stdout, syslog, whatever — without touching `_call()` at all.
 
 configure_traffic_logging() is called once at import time by main.py.
-Writes to logs/{YYYY-mm-dd}_validator_gateway.log (relative to this file,
+Writes to logs/{YYYY-mm-dd}_atlasboxpy_controller.log (relative to this file,
 i.e. examples/fastapi_kanban/logs/), rolling over to a new file at midnight
 local time without needing a process restart.
 """
@@ -60,8 +58,8 @@ class _DailyRotatingFileHandler(logging.Handler):
 
 
 def configure_traffic_logging() -> None:
-    logger = logging.getLogger("validator_gateway.traffic")
+    logger = logging.getLogger("atlasboxpy_controller.traffic")
     logger.setLevel(logging.INFO)
     logger.propagate = False
     if not any(isinstance(h, _DailyRotatingFileHandler) for h in logger.handlers):
-        logger.addHandler(_DailyRotatingFileHandler(_LOG_DIR, "validator_gateway.log"))
+        logger.addHandler(_DailyRotatingFileHandler(_LOG_DIR, "atlasboxpy_controller.log"))

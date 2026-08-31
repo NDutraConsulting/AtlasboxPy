@@ -1,74 +1,10 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "validator_gateway"
-version = "0.1.0"
-description = "One enforced call path into your business logic — for REST routes, background workers, agents, and gRPC servicers alike."
-readme = "README.md"
-authors = [
-    {name = "Nikko Dutra", email = "ndutra.consulting@gmail.com"},
-    {name = "NDutra Consulting"},
-]
-requires-python = ">=3.10"
-license = "MIT"
-license-files = ["LICENSE"]
-classifiers = [
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
-dependencies = [
-    "pydantic>=2.0,<3.0",
-]
-
-[project.optional-dependencies]
-fastapi = ["fastapi>=0.100"]
-dev = [
-    "pytest", "pytest-asyncio", "pytest-cov", "httpx", "ruff", "mypy", "fastapi", "uvicorn",
-    "sqlalchemy>=2.0", "aiosqlite", "greenlet",
-]
-
-[project.scripts]
-validator-gateway = "validator_gateway.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/TODO/validator_gateway"
-Repository = "https://github.com/TODO/validator_gateway"
-Issues = "https://github.com/TODO/validator_gateway/issues"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/validator_gateway"]
-
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-# examples/ includes CLI-generated content (Phase 11's `validator-gateway
-# init` templates) that must stay byte-for-byte what the CLI actually
-# produces — it isn't hand-formatted to this repo's own lint config, and a
-# real scaffolded project wouldn't inherit this config anyway. Demo
-# correctness is enforced by pytest (Phase 12), not by ruff/mypy here.
-extend-exclude = ["examples"]
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-
-[tool.mypy]
-python_version = "3.10"
-strict = true
-exclude = ["tests/", "examples/"]
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-strict = false
-
-[[tool.mypy.overrides]]
-module = "examples.*"
-strict = false
+# This is a workspace root, not an installable package — there's no
+# [project]/[build-system] here. It exists only to give `pytest examples/`,
+# run from the repo root, the same asyncio_mode setting each package's own
+# pyproject.toml carries for its own tests. The actual packages live under
+# packages/ — see packages/atlasboxpy_controller/ and
+# packages/atlasboxpy_repository/, each with its own pyproject.toml.
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["examples"]
 asyncio_mode = "auto"

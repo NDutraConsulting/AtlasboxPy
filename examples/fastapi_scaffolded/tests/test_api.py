@@ -1,7 +1,7 @@
 """P12-T2: proves the CLI's scaffold output is usable, not just importable
-— these tests run against the actual generated controllers/example_controller.py
-and validator_gateways/example_gateway.py, unmodified since `validator-gateway
-init` produced them."""
+— these tests run against the actual generated
+controllers/example_controller.py, unmodified since `atlasboxpy-controller
+init` produced it."""
 
 from fastapi.testclient import TestClient
 from main import app  # resolvable via conftest.py's sys.path insertion

@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP Is for Strangers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #ffffff;
+    --paper-raised: #fafafa;
+    --line: #dddddd;
+    --line-strong: #a8a8a8;
+    --ink: #111111;
+    --ink-soft: #555555;
+    --ink-faint: #8a8a8a;
+
+    --sans: "Open Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: var(--ink); }
+  a:focus-visible, summary:focus-visible, details:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+
+  /* ---------- Blog header (page-level, not ADR-level) ---------- */
+
+  .kicker {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 16px;
+  }
+
+  h1.title {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: clamp(30px, 5.5vw, 46px);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin: 0 0 16px;
+    color: var(--ink);
+  }
+
+  .dek {
+    font-size: 19px;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-soft);
+    max-width: 56ch;
+    margin: 0 0 26px;
+  }
+
+  .byline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line-strong);
+    margin-bottom: 36px;
+  }
+  .byline .sep { color: var(--line-strong); }
+  .byline strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Prose ---------- */
+
+  .prose p {
+    margin: 0 0 20px;
+    font-size: 17px;
+  }
+  .prose h2 {
+    font-size: 23px;
+    font-weight: 700;
+    margin: 44px 0 16px;
+    color: var(--ink);
+  }
+
+  /* ---------- ASCII system diagram ---------- */
+
+  .diagram-wrap {
+    margin: 8px 0 36px;
+  }
+  .diagram-label {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 10px;
+  }
+  pre.ascii {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--line-strong);
+    padding: 20px 18px;
+    overflow-x: auto;
+    margin: 0;
+  }
+
+  /* ---------- ADR tree connector ---------- */
+
+  .adr-tree {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 0 0 28px 8px;
+  }
+  .adr-tree .branch { color: var(--ink-faint); }
+  .adr-tree strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Embedded ADR card ---------- */
+
+  .adr-card {
+    border: 1px solid var(--ink);
+    background: var(--paper);
+    margin: 0 0 40px;
+  }
+
+  .adr-card__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--line-strong);
+    background: var(--paper-raised);
+  }
+
+  .adr-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--ink-soft);
+  }
+  .adr-id {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .adr-card__head h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px 3px 7px;
+    border: 1px solid var(--ink);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 10.5px;
+  }
+  .version-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-soft);
+    border: 1px solid var(--ink-faint);
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+
+  /* ---------- Tree slice view (page-level dropdown) ---------- */
+
+  .tree-slice {
+    border: 1px solid var(--line-strong);
+    margin: 0 0 40px;
+  }
+  .tree-slice summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    background: var(--paper-raised);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tree-slice summary::-webkit-details-marker { display: none; }
+  .tree-slice .chevron { font-family: var(--mono); font-size: 15px; color: var(--ink-faint); transition: transform 180ms ease; }
+  .tree-slice[open] .chevron { transform: rotate(90deg); color: var(--ink); }
+  .tree-slice summary .trigger-label { font-size: 14.5px; font-weight: 600; flex: 1; }
+  .tree-slice summary .trigger-meta { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); }
+  .tree-slice pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 18px 20px 20px;
+    overflow-x: auto;
+  }
+
+  /* ---------- References at scale (page-level dropdown) ---------- */
+
+  .scale-panel {
+    border: 1px solid var(--line-strong);
+    margin: 0 0 40px;
+  }
+  .scale-panel summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    background: var(--paper-raised);
+    -webkit-tap-highlight-color: transparent;
+    font-size: 14.5px;
+    font-weight: 600;
+  }
+  .scale-panel summary::-webkit-details-marker { display: none; }
+  .scale-panel .chevron { font-family: var(--mono); font-size: 15px; color: var(--ink-faint); transition: transform 180ms ease; margin-left: auto; }
+  .scale-panel[open] .chevron { transform: rotate(90deg); color: var(--ink); }
+  .scale-panel ul { margin: 0; padding: 18px 20px 20px 38px; }
+  .scale-panel li { font-size: 14.5px; color: var(--ink-soft); margin-bottom: 10px; }
+  .scale-panel li:last-child { margin-bottom: 0; }
+  .scale-panel li em { font-style: normal; color: var(--ink-faint); font-size: 13px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tree-slice .chevron, .scale-panel .chevron { transition: none; }
+  }
+
+  .status-chip::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: var(--ink);
+    display: inline-block;
+  }
+
+  .adr-card__body { padding: 26px 22px 6px; }
+
+  .field {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 4px 18px;
+    padding: 13px 0;
+    border-top: 1px solid var(--line);
+  }
+  .field:first-of-type { border-top: none; padding-top: 0; }
+  .field dt {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    color: var(--ink);
+    text-transform: uppercase;
+    padding-top: 2px;
+  }
+  .field dd { margin: 0; font-size: 15.5px; line-height: 1.55; }
+
+  .impact-legend {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    display: flex;
+    gap: 18px;
+    margin: 16px 0 0;
+  }
+  .impact-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .impact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+    border-top: 1px solid var(--line);
+    margin-top: 12px;
+  }
+  .impact-card { background: var(--paper); padding: 15px 17px 17px; }
+  .impact-card__label {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono);
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--ink); margin-bottom: 8px;
+  }
+  .impact-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: none;
+    border: 1.5px solid var(--ink); background: transparent;
+  }
+  .impact-dot--pos { background: var(--ink); }
+  .impact-dot--watch { background: transparent; }
+  .impact-card p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-soft); }
+
+  .rule-block {
+    border-left: 3px solid var(--ink);
+    padding: 4px 0 4px 20px;
+    margin: 26px 0 4px;
+  }
+  .rule-block h4 {
+    font-family: var(--mono);
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink); margin: 0 0 12px;
+  }
+  .rule-branch { display: grid; grid-template-columns: 20px 1fr; gap: 2px 10px; margin-bottom: 10px; }
+  .rule-branch__mark { font-family: var(--mono); font-weight: 700; color: var(--ink); }
+  .rule-branch p { margin: 0; font-size: 15px; }
+  .rule-note { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line-strong); }
+
+  /* collapsible sections inside a card */
+  .dossier-panel { border-top: 1px solid var(--line); }
+  .adr-card__body .dossier-panel:first-of-type { border-top: 1px solid var(--line); margin-top: 22px; }
+  .dossier-panel summary {
+    list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
+    padding: 14px 2px; -webkit-tap-highlight-color: transparent;
+  }
+  .dossier-panel summary::-webkit-details-marker { display: none; }
+  .dossier-index {
+    font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink);
+    border: 1px solid var(--ink); width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+  }
+  .dossier-title { font-size: 14.5px; font-weight: 600; color: var(--ink); flex: 1; }
+  .chevron { font-family: var(--mono); font-size: 15px; color: var(--ink-faint); transition: transform 180ms ease; flex: none; }
+  .dossier-panel[open] .chevron { transform: rotate(90deg); color: var(--ink); }
+  .dossier-content { padding: 2px 2px 22px 34px; }
+  .dossier-content p { margin: 0 0 13px; font-size: 15px; }
+  .dossier-content p:last-child { margin-bottom: 0; }
+  .dossier-content ul, .dossier-content ol { margin: 0 0 13px; padding-left: 20px; }
+  .dossier-content li { margin-bottom: 7px; font-size: 15px; }
+
+  .consequence-cols { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 560px) { .consequence-cols { grid-template-columns: 1fr 1fr; } }
+  .consequence-cols h5 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase;
+    margin: 0 0 9px; color: var(--ink-faint);
+  }
+
+  code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: var(--paper-raised); border: 1px solid var(--line); padding: 1px 5px;
+  }
+
+  @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }
+
+  @media (max-width: 520px) {
+    .impact-grid { grid-template-columns: 1fr; }
+    .field { grid-template-columns: 1fr; }
+    .field dt { padding-top: 0; }
+  }
+
+  .footer-note {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line-strong);
+    font-size: 13px; color: var(--ink-faint);
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header>
+    <p class="kicker">Systems &amp; Architecture</p>
+    <h1 class="title">MCP Is for Strangers</h1>
+    <p class="dek">A protocol for crossing a boundary you don't control gets reached for by default now, even when there's no boundary to cross.</p>
+    <div class="byline">
+      <span><strong>Platform &amp; Architecture</strong></span>
+      <span class="sep">·</span>
+      <span>29 Aug 2026</span>
+      <span class="sep">·</span>
+      <span>11 min read</span>
+      <span class="sep">·</span>
+      <span>references 3 ADR proposals</span>
+    </div>
+  </header>
+
+  <div class="prose">
+    <p>Every agent we've shipped this year has needed to call at least one tool that already lives in our own codebase. The reflexive answer for "how does it call that tool" has increasingly been MCP — and increasingly, that reflex has been wrong. Not because MCP is bad, but because it solves a narrower problem than the reflex assumes: crossing an ownership boundary, a different team, a different company, a different runtime. Most of our agents never cross one.</p>
+    <p>This post walks through two decisions that follow from that observation, and how they relate. The first draws the line for when MCP is actually worth its cost. The second decides what should replace it when it isn't — which turns out to already exist in how every other caller reaches our systems today.</p>
+  </div>
+
+  <div class="diagram-wrap">
+    <p class="diagram-label">System shape</p>
+    <pre class="ascii">
+   REST route          background worker         in-process agent
+       │                       │                         │
+       └───────────────────────┼─────────────────────────┘
+                                │
+                                ▼
+                     ┌────────────────────┐
+                     │     Controller      │   one call path
+                     │  (BaseController)   │   one error taxonomy
+                     └──────────┬─────────┘
+                                │
+                                ▼
+                     ┌────────────────────┐
+                     │  Services / Repo    │
+                     └────────────────────┘
+
+     ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ownership boundary crossed?  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+
+                     ┌────────────────────┐
+                     │     MCP server      │ ──▶ external / third-party
+                     └────────────────────┘      consumer
+    </pre>
+  </div>
+
+  <div class="prose">
+    <p>The first decision, formalized below, draws the boundary line explicitly — when a tool is worth wrapping in a protocol server, and when it isn't. It's since grown a second and third decision underneath it, so before the detail, here's the shape of the whole thing.</p>
+  </div>
+
+  <details class="tree-slice">
+    <summary>
+      <span class="trigger-label">View full decision tree</span>
+      <span class="trigger-meta">3 nodes · 3 layers</span>
+      <span class="chevron" aria-hidden="true">›</span>
+    </summary>
+    <pre>AD-014                                    [main @ a3f9c1e]
+ └─ AD-014.1   extends                    [main @ a3f9c1e]
+      └─ AD-014.1.1   extends             [agent-runtime @ f6b21d0]</pre>
+  </details>
+
+  <!-- ============ ADR 1 ============ -->
+  <article class="adr-card">
+    <div class="adr-card__head">
+      <span class="adr-tag">ADR</span>
+      <span class="adr-id">AD-014</span>
+      <h3>Reserve MCP for Genuine Ownership Boundaries</h3>
+      <span class="version-badge">main @ a3f9c1e</span>
+      <span class="status-chip">Proposed</span>
+    </div>
+    <div class="adr-card__body">
+
+      <dl>
+        <div class="field">
+          <dt>Problem</dt>
+          <dd>Agents are treated as a category that always needs MCP, even when the tool they're calling already lives in the same codebase, language, and deploy as the agent itself.</dd>
+        </div>
+        <div class="field">
+          <dt>Solution</dt>
+          <dd>Call internally-owned tools directly through the existing <code>atlasboxpy_controller</code> call path — the same controller class REST routes and workers already use. Reserve MCP for tools that genuinely cross an ownership boundary — a different team, a different company, or multiple independent clients.</dd>
+        </div>
+      </dl>
+
+      <p class="impact-legend">
+        <span><span class="impact-dot impact-dot--pos" aria-hidden="true"></span> improves</span>
+        <span><span class="impact-dot impact-dot--watch" aria-hidden="true"></span> trade-off to watch</span>
+      </p>
+
+      <div class="impact-grid">
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Cognitive Load</p>
+          <p>Lower for the common case: one call path, typed response, instead of holding a protocol schema and a function signature in sync. Rises only if a tool later needs external discovery — added deliberately, not by default.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Performance</p>
+          <p>Removes a serialization and IPC hop from the agent's reasoning loop. A tool call behaves like any other function call in-process — no round trip, no JSON-RPC overhead, no server startup latency on first use.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--watch" aria-hidden="true"></span>Reliability</p>
+          <p>Neutral to positive, conditional on discipline. Calls inherit the same shared error taxonomy and structured <code>retryable</code> signal every other caller gets, instead of per-agent retry logic invented from scratch. Regresses only if a team bypasses the controller for an undisciplined direct call into a service.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--watch" aria-hidden="true"></span>Evolvability</p>
+          <p>Slight deferred cost: no built-in dynamic discovery if a second, independent consumer later needs this tool. Mitigated cheaply — wrap the same controller in an MCP server when that boundary actually appears.</p>
+        </div>
+      </div>
+
+      <div class="rule-block">
+        <h4>Decision Rule</h4>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✓</span>
+          <p><strong>Same codebase, runtime, and owner</strong> → call it directly through the controller. No server, no schema, no protocol.</p>
+        </div>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✗</span>
+          <p><strong>Different team, company, or multiple independent clients</strong> need the same tool → MCP is earning its keep. Build the server.</p>
+        </div>
+        <p class="rule-note">Rough secondary signal: fewer than about three independent integrations sharing a tool means the N-to-M problem MCP exists to solve hasn't shown up yet.</p>
+      </div>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">A</span>
+          <span class="dossier-title">Context</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <p>Agents are now a normal category of caller into our systems, alongside REST clients and background workers. The default answer for "how does an agent reach a tool" has become MCP — stand up a server, describe the tool as a schema, give the agent a client.</p>
+          <p>That default isn't wrong in general. MCP solves a specific problem: letting a client discover and invoke a tool it doesn't own, across a boundary a standardized protocol genuinely helps cross. The friction shows up when that reflex gets applied uniformly, including to tools that were never on the other side of any such boundary.</p>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">B</span>
+          <span class="dossier-title">Rationale &amp; Evidence</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <p>The cost side isn't speculative. Independent write-ups across the industry converge on the same short list of costs when MCP is applied where no ownership boundary exists: added latency from serialization and IPC now sitting inside the reasoning loop, added complexity from turning a function call into a network call, reduced observability, and ongoing operational toil from every server becoming another artifact to keep alive.</p>
+          <p>We're not the only ones drawing this line. AMD's robotics research team published a physical-AI agent architecture on 25 Aug 2026, calling the robot's existing ROS 2 perception, planning, and control capabilities directly as tools — not through an added protocol layer, justified by interpretability and on-device latency. They take no position on MCP either way; this is a production team's revealed preference, not an opinion. <a href="https://rocm.blogs.amd.com/ecosystems-and-partners/rai-lemonade-agents/README.html" target="_blank" rel="noopener">Read the source →</a></p>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">C</span>
+          <span class="dossier-title">Consequences</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <div class="consequence-cols">
+            <div>
+              <h5>What gets easier</h5>
+              <ul>
+                <li>No new server to deploy or keep alive for tools we already own.</li>
+                <li>Failures surface in the same stack trace and error taxonomy for every caller.</li>
+                <li>Agents get the same structured <code>retryable</code> signal every other caller gets, for free — deciding what to do with it stays the agent's own job.</li>
+              </ul>
+            </div>
+            <div>
+              <h5>What we give up</h5>
+              <ul>
+                <li>No built-in dynamic discovery if a future external consumer needs this tool.</li>
+                <li>Only sound if the controller is actually used, not bypassed for a direct call into a service.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">D</span>
+          <span class="dossier-title">Alternatives Considered</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <ol>
+            <li><strong>MCP by default for all agent tool calls.</strong> Rejected — pays the full protocol cost on tools that never cross a boundary.</li>
+            <li><strong>Undisciplined direct calls, no shared infrastructure.</strong> Rejected — reintroduces inconsistent error handling.</li>
+            <li><strong>Direct calls through the controller; MCP reserved for genuine boundaries. (Chosen.)</strong></li>
+          </ol>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">E</span>
+          <span class="dossier-title">When to Revisit</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <ul>
+            <li>A tool used only by our agents needs a second, independent consumer — wrap the controller in an MCP server without touching the implementation.</li>
+            <li>Independent clients needing a given tool cross roughly three.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">F</span>
+          <span class="dossier-title">References</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <ul>
+            <li>AMD ROCm Blog, "Enabling Physical AI Agents with Lemonade," 25 Aug 2026 — <a href="https://rocm.blogs.amd.com/ecosystems-and-partners/rai-lemonade-agents/README.html" target="_blank" rel="noopener">rocm.blogs.amd.com</a></li>
+            <li><code>atlasboxpy_controller</code> package, formerly <code>validator_gateway</code> (internal).</li>
+          </ul>
+        </div>
+      </details>
+
+    </div>
+  </article>
+
+  <pre class="adr-tree">AD-014
+  <span class="branch">└─</span> <strong>AD-014.1</strong>  extends — what replaces MCP when we opt out</pre>
+
+  <div class="prose">
+    <p>Drawing that line raises an immediate follow-up: if agents aren't going through MCP for internal tools, what exactly are they calling instead? That's less a new question than an existing answer — the same call path our REST routes and workers already use, formalized as a second, dependent decision.</p>
+  </div>
+
+  <!-- ============ ADR 2 ============ -->
+  <article class="adr-card">
+    <div class="adr-card__head">
+      <span class="adr-tag">ADR</span>
+      <span class="adr-id">AD-014.1</span>
+      <h3>Make the Controller the Default In-Process Call Path for Agents</h3>
+      <span class="version-badge">main @ a3f9c1e</span>
+      <span class="status-chip">Proposed</span>
+    </div>
+    <div class="adr-card__body">
+
+      <dl>
+        <div class="field">
+          <dt>Problem</dt>
+          <dd>Opting out of MCP for internal tools only helps if "call it directly" doesn't quietly become "call it however each agent's author feels like" — inconsistent error handling, no shared observability, no retry logic.</dd>
+        </div>
+        <div class="field">
+          <dt>Solution</dt>
+          <dd>Any in-process agent imports the same controller class a REST route or worker would use, and calls its methods directly. The controller's own base class already wraps every public method — there's no separate object to construct and no unwrapped, raw method an agent could accidentally call instead.</dd>
+        </div>
+      </dl>
+
+      <p class="impact-legend">
+        <span><span class="impact-dot impact-dot--pos" aria-hidden="true"></span> improves</span>
+        <span><span class="impact-dot impact-dot--watch" aria-hidden="true"></span> trade-off to watch</span>
+      </p>
+
+      <div class="impact-grid">
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Cognitive Load</p>
+          <p>Zero new concept for engineers who already know the controller from REST and worker call sites — an agent is just another caller, not a new abstraction to learn.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Performance</p>
+          <p>No overhead beyond the controller's own try/except and formatting logic, already in the hot path for every other caller today.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Reliability</p>
+          <p>Agent-originated failures come back with the same structured, typed <code>retryable</code> signal every other caller gets — important since agents run unattended and won't notice a silent failure. The retry/backoff decision itself stays the agent's own code, deliberately, rather than a policy engine's.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--watch" aria-hidden="true"></span>Evolvability</p>
+          <p>If an agent's tool later needs to become a publicly discoverable capability, the same controller wraps in an MCP server without changing the underlying business logic.</p>
+        </div>
+      </div>
+
+      <div class="rule-block">
+        <h4>Decision Rule</h4>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✓</span>
+          <p>Agent calls a controller it owns → import the controller class directly and call its methods. No gateway to construct, no recovery engine to attach — the base class it already inherits from handles both concerns.</p>
+        </div>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✗</span>
+          <p>Agent reaches around the controller into a service directly and wraps it in bespoke error handling → not compliant with this decision.</p>
+        </div>
+      </div>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">A</span>
+          <span class="dossier-title">Consequences</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <p>Every caller — REST route, worker, or agent — now produces identical, typed success and error responses for the same controller. Debugging an agent failure means reading the same error taxonomy an engineer already knows from the REST logs, not a separate agent-specific format.</p>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">B</span>
+          <span class="dossier-title">References</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <ul>
+            <li>Depends on AD-014 (this document extends it).</li>
+            <li><code>atlasboxpy_controller</code> package, formerly <code>validator_gateway</code> (internal).</li>
+          </ul>
+        </div>
+      </details>
+
+    </div>
+  </article>
+
+  <pre class="adr-tree">AD-014.1
+    <span class="branch">└─</span> <strong>AD-014.1.1</strong>  extends — closes a gap AD-014.1 opened, on the agent-runtime fork</pre>
+
+  <div class="prose">
+    <p>AD-014.1 removed the network hop, but it also removed the one thing MCP would have given agents for free: a negotiated schema. A controller's method signature can change, and a direct call has no protocol to warn the caller. That gap surfaced for real once the <code>agent-runtime</code> fork started iterating on controller interfaces faster than the rest of the codebase — which is what produced a third, more specific decision.</p>
+  </div>
+
+  <!-- ============ ADR 3 (grandchild) ============ -->
+  <article class="adr-card">
+    <div class="adr-card__head">
+      <span class="adr-tag">ADR</span>
+      <span class="adr-id">AD-014.1.1</span>
+      <h3>Require a Deprecation Window Before Changing Any Agent-Callable Controller Method</h3>
+      <span class="version-badge">agent-runtime @ f6b21d0</span>
+      <span class="status-chip">Proposed</span>
+    </div>
+    <div class="adr-card__body">
+
+      <dl>
+        <div class="field">
+          <dt>Problem</dt>
+          <dd>Direct in-process calls (AD-014.1) give agents no protocol-level interface negotiation — unlike MCP's schema discovery, a controller's method signature can change and break an agent silently on its next call.</dd>
+        </div>
+        <div class="field">
+          <dt>Solution</dt>
+          <dd>Any controller method reachable by an agent must carry a minimum deprecation window — old and new signatures coexist for at least one release cycle — enforced via a static agent-callable registry checked at review time, not a runtime protocol.</dd>
+        </div>
+      </dl>
+
+      <p class="impact-legend">
+        <span><span class="impact-dot impact-dot--pos" aria-hidden="true"></span> improves</span>
+        <span><span class="impact-dot impact-dot--watch" aria-hidden="true"></span> trade-off to watch</span>
+      </p>
+
+      <div class="impact-grid">
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--watch" aria-hidden="true"></span>Cognitive Load</p>
+          <p>Adds one habit for engineers changing a controller: check the agent-callable registry before renaming or removing a method. Small, but real — MCP would have made this a schema diff instead of a manual check.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Performance</p>
+          <p>No runtime cost — the registry check happens at review and CI time, not on the call path. Agents keep the zero-hop performance AD-014.1 already established.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Reliability</p>
+          <p>Directly closes the gap AD-014.1 opened: an agent can no longer be broken by an unannounced signature change on a controller it calls directly.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--watch" aria-hidden="true"></span>Evolvability</p>
+          <p>Slightly slower to remove old controller methods than an unconstrained codebase would allow, in exchange for agents never silently breaking on a change they had no way to see coming.</p>
+        </div>
+      </div>
+
+      <div class="rule-block">
+        <h4>Decision Rule</h4>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✓</span>
+          <p>Changing a controller method's signature and it appears in the agent-callable registry → deprecate first, remove next release cycle.</p>
+        </div>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✗</span>
+          <p>Method isn't in the registry → normal change process, no window required.</p>
+        </div>
+      </div>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">A</span>
+          <span class="dossier-title">Consequences</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <p>Every agent-callable controller method now has exactly one place its callers can be checked before a breaking change ships — the registry — rather than relying on whoever's changing the method to remember which agents might depend on it.</p>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">B</span>
+          <span class="dossier-title">References</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <ul>
+            <li>Depends on AD-014.1 (this document extends it).</li>
+            <li>Agent-runtime fork RFC (internal).</li>
+          </ul>
+        </div>
+      </details>
+
+    </div>
+  </article>
+
+  <details class="scale-panel">
+    <summary>
+      All References (3)
+      <span class="chevron" aria-hidden="true">›</span>
+    </summary>
+    <ul>
+      <li>AMD ROCm Blog, "Enabling Physical AI Agents with Lemonade," 25 Aug 2026 — <a href="https://rocm.blogs.amd.com/ecosystems-and-partners/rai-lemonade-agents/README.html" target="_blank" rel="noopener">rocm.blogs.amd.com</a> <em>— cited in AD-014</em></li>
+      <li><code>atlasboxpy_controller</code> package, formerly <code>validator_gateway</code> (internal) <em>— cited in AD-014, AD-014.1</em></li>
+      <li>Agent-runtime fork RFC (internal) <em>— cited in AD-014.1.1</em></li>
+    </ul>
+  </details>
+
+  <div class="prose">
+    <h2>Keep it strategically simple</h2>
+    <p>Skipping the protocol layer isn't the lazy choice, it's the considered one — made after checking whether the boundary the protocol exists to solve is actually there. Most of the time, for most of our agents, it isn't. Presenting these decisions together, rather than as separate entries in a flat ADR list, is deliberate: seeing AD-014.1.1 branch from AD-014.1 branch from AD-014 tells a reader not just what we decided, but why one decision made the next one necessary — and the version badge on each node tells them which state of the system that necessity showed up in.</p>
+  </div>
+
+  <p class="footer-note">Platform &amp; Architecture · this post embeds AD-014, AD-014.1, and AD-014.1.1 · prototype layout, static HTML/CSS</p>
+
+</div>
+
+</body>
+</html>

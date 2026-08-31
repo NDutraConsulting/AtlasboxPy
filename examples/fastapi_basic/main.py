@@ -1,7 +1,7 @@
-"""Minimal but complete CRUD example built on validator_gateway.
+"""Minimal but complete CRUD example built on atlasboxpy_controller.
 
 Run it with:
-    pip install -e ".[fastapi]"
+    pip install -e "packages/atlasboxpy_controller[fastapi]"
     uvicorn examples.fastapi_basic.main:app --reload
 
 Then, e.g.:
@@ -10,74 +10,66 @@ Then, e.g.:
     curl localhost:8000/users/<id-from-above>
     curl localhost:8000/users/does-not-exist   # -> formatted 404 ErrorResponse
 
-This gateway is constructed WITHOUT `recovery=` — per Design Decision 8, a
-synchronous REST route wants fail-fast behavior. See
-examples/worker_recovery for the retry/redirect/queue-enabled counterpart.
+Routes call the controller directly — BaseController wraps every public
+async method, so `await controller.create_user(payload)` already returns a
+SuccessResponse/ErrorResponse. No gateway object, no Depends() plumbing.
 """
 
-from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 
-from validator_gateway import AlreadyExistsError, ValidatorGateway, default_logging_hook
-from validator_gateway.fastapi_integration import (
+from atlasboxpy_controller import AlreadyExistsError
+from atlasboxpy_controller.fastapi_integration import (
     apply_registry_to_route,
-    get_gateway_factory,
     iter_api_routes,
     to_json_response,
 )
-from validator_gateway.registry import ModelRegistry
+from atlasboxpy_controller.registry import ModelRegistry
 
 from .controllers import UserController
 from .models import CreateUserRequest, UpdateUserRequest
 from .services import UserService
 
 service = UserService()
+controller = UserController(service)
 registry = ModelRegistry()
 
-app = FastAPI(title="validator_gateway — fastapi_basic example")
+app = FastAPI(title="atlasboxpy_controller — fastapi_basic example")
 router = APIRouter()
-
-gateway_dep = get_gateway_factory(
-    lambda: UserController(service), on_exception=default_logging_hook()
-)
 
 
 # --- Level 1 integration: typed signatures, FastAPI introspects everything ---
 
 
 @router.post("/users")
-async def create_user(
-    payload: CreateUserRequest, gateway: ValidatorGateway = Depends(gateway_dep)
-):
-    result = await gateway.handle(gateway.controller.create_user, payload)
+async def create_user(payload: CreateUserRequest):
+    result = await controller.create_user(payload)
     return to_json_response(result)
 
 
 @router.get("/users/{user_id}")
-async def get_user(user_id: str, gateway: ValidatorGateway = Depends(gateway_dep)):
-    result = await gateway.handle(gateway.controller.get_user, user_id)
+async def get_user(user_id: str):
+    result = await controller.get_user(user_id)
     return to_json_response(result)
 
 
 @router.get("/users")
-async def list_users(gateway: ValidatorGateway = Depends(gateway_dep)):
-    result = await gateway.handle(gateway.controller.list_users)
+async def list_users():
+    result = await controller.list_users()
     return to_json_response(result)
 
 
 @router.patch("/users/{user_id}")
-async def update_user(
-    user_id: str, payload: UpdateUserRequest, gateway: ValidatorGateway = Depends(gateway_dep)
-):
+async def update_user(user_id: str, payload: UpdateUserRequest):
     # UserService.update_user uses fastapi_integration.extract_patch_data
     # internally (see services.py) to apply only the fields the client
     # actually set, not every field on UpdateUserRequest.
-    result = await gateway.handle(gateway.controller.update_user, user_id, payload)
+    result = await controller.update_user(user_id, payload)
     return to_json_response(result)
 
 
 @router.delete("/users/{user_id}")
-async def delete_user(user_id: str, gateway: ValidatorGateway = Depends(gateway_dep)):
-    result = await gateway.handle(gateway.controller.delete_user, user_id)
+async def delete_user(user_id: str):
+    result = await controller.delete_user(user_id)
     return to_json_response(result)
 
 
@@ -88,9 +80,9 @@ registry.register("POST", "/users/thin", CreateUserRequest, raises=[AlreadyExist
 
 
 @router.post("/users/thin")
-async def create_user_thin(request: Request, gateway: ValidatorGateway = Depends(gateway_dep)):
+async def create_user_thin(request: Request):
     payload = CreateUserRequest.model_validate(await request.json())
-    result = await gateway.handle(gateway.controller.create_user, payload)
+    result = await controller.create_user(payload)
     return to_json_response(result)
 
 

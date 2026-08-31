@@ -1,0 +1,372 @@
+{
+  "$schema": "https://internal/schemas/blog_post_design_system.json",
+  "name": "Architect Post",
+  "version": "1.6.0",
+  "description": "A blog post format for technical/architectural writing that reads as narrative prose first, and can embed one or more self-contained Architecture Decision Records (ADRs) inline. Each embedded ADR is skimmable as problem/solution/four-axis-tradeoffs in under two minutes, with full rationale available behind native collapsible sections. Related ADRs are shown as a visible parent/child tree rather than a flat list.",
+  "reference_implementation": ["mcp-is-for-strangers-architect-post.html", "validation-layer-architect-post.html"],
+
+  "philosophy": [
+    "The page is a blog post first. An ADR is a component embedded within it, never the page's top-level identity.",
+    "A reader should be able to absorb any single embedded ADR's problem, solution, and trade-offs in under two minutes without expanding anything.",
+    "Full rationale, evidence, alternatives, and references are opt-in via progressive disclosure, not deleted or footnoted away.",
+    "Related decisions are shown as a tree (parent -> child), not as separate documents a reader has to go find and reconcile themselves.",
+    "The palette is monochrome by default, with one deliberate, scoped exception: status_chip is color-coded (v1.4) because a status is a small, fixed, learn-once vocabulary where color adds real scan speed. Everywhere else — impact_grid, dossier panels, the switcher, the tree map — semantic distinctions are still carried by fill/weight/shape, never hue, and color is never the *only* signal even on status_chip, since the status name is always present as text too.",
+    "Monospace type is reserved for code, system diagrams, and short structural identifiers (ADR ids, section index letters). The reading typeface for everything else is a single humanist sans."
+  ],
+
+  "tokens": {
+    "color": {
+      "paper":        { "value": "#ffffff", "usage": "page background" },
+      "paper-raised": { "value": "#fafafa", "usage": "recessed/raised panel backgrounds: ADR card head, ascii diagram block, code background" },
+      "line":         { "value": "#dddddd", "usage": "hairline dividers between low-emphasis elements (field rows, impact grid seams)" },
+      "line-strong":  { "value": "#a8a8a8", "usage": "stronger dividers: byline rule, dossier panel rules, dashed rule-note border" },
+      "ink":          { "value": "#111111", "usage": "primary text, borders that carry emphasis (card border, status chip, dossier index badge), filled impact dots" },
+      "ink-soft":     { "value": "#555555", "usage": "secondary text: dek, byline, impact card body copy" },
+      "ink-faint":    { "value": "#8a8a8a", "usage": "tertiary text: panel labels, chevrons at rest, footer note" },
+      "status-accepted":        { "value": "#3f7d5c", "usage": "status_chip only — 'Accepted'" },
+      "status-rejected":        { "value": "#b33a3a", "usage": "status_chip only — 'Rejected'" },
+      "status-new-proposal":    { "value": "#2c4870", "usage": "status_chip only — 'New Proposal'" },
+      "status-needs-discussion":{ "value": "#a8631a", "usage": "status_chip only — 'Needs Discussion' (muted amber, not literal yellow — see status_chip.color_substitution_note)" },
+      "status-accepted-dark":         { "value": "#2a5940", "usage": "adr_switcher option text only" },
+      "status-rejected-dark":         { "value": "#7d2a2a", "usage": "adr_switcher option text only" },
+      "status-new-proposal-dark":     { "value": "#1c2f4a", "usage": "adr_switcher option text only" },
+      "status-needs-discussion-dark": { "value": "#744a14", "usage": "adr_switcher option text only" },
+      "status-accepted-bg":           { "value": "#e7f1ec", "usage": "adr_card__head background tint when that card's status is Accepted" },
+      "status-rejected-bg":           { "value": "#f6e8e7", "usage": "adr_card__head background tint when that card's status is Rejected" },
+      "status-new-proposal-bg":       { "value": "#e6ebf1", "usage": "adr_card__head background tint when that card's status is New Proposal" },
+      "status-needs-discussion-bg":   { "value": "#f5ecdd", "usage": "adr_card__head background tint when that card's status is Needs Discussion" }
+    },
+    "typography": {
+      "families": {
+        "sans": {
+          "stack": ["Open Sans", "-apple-system", "Segoe UI", "Helvetica", "Arial", "sans-serif"],
+          "source": "Google Fonts: Open Sans, weights 400/600/700, italic 400",
+          "role": "Primary reading typeface. Used for the page title, dek, byline, all prose, ADR card titles, field values, and impact card body copy."
+        },
+        "mono": {
+          "stack": ["IBM Plex Mono", "ui-monospace", "SF Mono", "Menlo", "monospace"],
+          "source": "Google Fonts: IBM Plex Mono, weights 500/600",
+          "role": "Restricted to: inline/block code, the ASCII system diagram, the ADR tree connector, and short structural identifiers (ADR tag/id, field labels, impact card labels, status chip text, dossier index letters and titles, section headings inside consequence columns). Never used for prose."
+        }
+      },
+      "scale": {
+        "title":            { "family": "sans", "size": "clamp(30px, 5.5vw, 46px)", "weight": 700, "line_height": 1.1,  "letter_spacing": "-0.015em" },
+        "kicker":            { "family": "sans", "size": "12.5px", "weight": 700, "letter_spacing": "0.12em", "case": "uppercase", "color": "ink-soft" },
+        "dek":               { "family": "sans", "size": "19px",   "weight": 400, "style": "italic", "color": "ink-soft" },
+        "byline":            { "family": "sans", "size": "14px",   "weight": 400, "color": "ink-soft" },
+        "prose_body":        { "family": "sans", "size": "17px",   "line_height": 1.68 },
+        "prose_h2":          { "family": "sans", "size": "23px",   "weight": 700 },
+        "diagram_label":     { "family": "sans", "size": "12.5px", "weight": 700, "letter_spacing": "0.08em", "case": "uppercase", "color": "ink-soft" },
+        "ascii_block":       { "family": "mono", "size": "12.5px", "line_height": 1.5 },
+        "adr_tree":          { "family": "mono", "size": "13px",  "color": "ink-soft" },
+        "adr_tag":           { "family": "mono", "size": "11px",  "weight": 600, "letter_spacing": "0.1em", "color": "ink-soft" },
+        "adr_id":            { "family": "mono", "size": "13px",  "weight": 600, "color": "ink" },
+        "adr_card_title":    { "family": "sans", "size": "16px",  "weight": 700 },
+        "status_chip":       { "family": "mono", "size": "10.5px","weight": 600, "letter_spacing": "0.06em", "case": "uppercase" },
+        "field_label":       { "family": "mono", "size": "11px",  "weight": 600, "letter_spacing": "0.07em", "case": "uppercase", "color": "ink" },
+        "field_value":       { "family": "sans", "size": "15.5px","line_height": 1.55 },
+        "impact_legend":     { "family": "mono", "size": "11px",  "color": "ink-faint" },
+        "impact_label":      { "family": "mono", "size": "10.5px","weight": 600, "letter_spacing": "0.06em", "case": "uppercase" },
+        "impact_body":       { "family": "sans", "size": "14px",  "line_height": 1.55, "color": "ink-soft", "max_words": 50 },
+        "rule_heading":      { "family": "mono", "size": "11.5px","weight": 600, "letter_spacing": "0.08em", "case": "uppercase" },
+        "rule_branch_text":  { "family": "sans", "size": "15px" },
+        "rule_note":         { "family": "sans", "size": "13.5px","color": "ink-soft" },
+        "dossier_index":     { "family": "mono", "size": "11px",  "weight": 600, "color": "ink" },
+        "dossier_title":     { "family": "sans", "size": "14.5px","weight": 600, "color": "ink" },
+        "dossier_content":   { "family": "sans", "size": "15px" },
+        "consequence_heading": { "family": "mono", "size": "11px", "letter_spacing": "0.07em", "case": "uppercase", "color": "ink-faint" },
+        "footer_note":       { "family": "sans", "size": "13px",  "color": "ink-faint" },
+        "version_badge":     { "family": "mono", "size": "10px",  "color": "ink-soft", "letter_spacing": "0.01em" },
+        "tree_slice_trigger":{ "family": "sans", "size": "14.5px","weight": 600, "color": "ink" },
+        "reference_scale_entry": { "family": "sans", "size": "14.5px", "color": "ink-soft" }
+      }
+    },
+    "spacing": {
+      "page_max_width": "720px",
+      "page_padding": "60px 24px 100px",
+      "adr_card_head_padding": "16px 22px",
+      "adr_card_body_padding": "26px 22px 6px",
+      "field_grid_columns": "100px 1fr",
+      "dossier_content_indent": "34px",
+      "rule_block_indent": "20px"
+    },
+    "border": {
+      "hairline":  "1px solid {color.line}",
+      "medium":    "1px solid {color.line-strong}",
+      "emphasis":  "1px solid {color.ink}",
+      "dashed":    "1px dashed {color.line-strong}",
+      "rule_block_accent": "3px solid {color.ink} (left border only)"
+    },
+    "motion": {
+      "chevron_rotate": { "property": "transform", "duration": "180ms", "easing": "ease", "from": "0deg", "to": "90deg", "respects_reduced_motion": true }
+    }
+  },
+
+  "components": {
+
+    "blog_header": {
+      "description": "Page-level header. Establishes the post's identity as an article, not as a single ADR.",
+      "anatomy": ["kicker", "title", "dek", "byline"],
+      "byline_contents": ["author_or_team", "date", "read_time", "adr_count_note"],
+      "rules": [
+        "Never place an ADR id or 'Architecture Decision' label at this level — that identity belongs to the embedded adr_card component only.",
+        "byline's adr_count_note (e.g. 'references 2 ADR proposals') is optional and only appears when the post embeds >= 1 ADR card."
+      ]
+    },
+
+    "prose_block": {
+      "description": "Ordinary narrative paragraphs in the architect voice. Used for intros, one-time orientation before a multi-ADR sequence, and closing sections.",
+      "rules": [
+        "Every embedded ADR sequence must be preceded by at least one prose sentence stating why the reader is about to see it — an ADR switcher or card should never appear with no narrative lead-in.",
+        "Do not write a separate prose transition between each pair of ADRs — with adr_switcher in use, cards are not read back-to-back in the same scroll, so a per-pair transition has no reliable place to land. State the overall shape once, up front; let relation_note (per-card) and tree_slice_view (map) carry the rest."
+      ]
+    },
+
+    "ascii_system_diagram": {
+      "description": "A literal monospace diagram of the system under discussion, rendered in a bordered <pre> block.",
+      "anatomy": ["diagram_label (optional caption above the block)", "pre.ascii content"],
+      "rules": [
+        "Only used when a system's shape (call paths, boundaries, data flow) is materially easier to grasp visually than in prose.",
+        "Must remain horizontally scrollable rather than wrapping, to preserve alignment on narrow viewports.",
+        "Box-drawing characters preferred over ASCII approximations (+, -, |) for legibility, since target rendering is always a monospace font."
+      ]
+    },
+
+    "adr_switcher": {
+      "description": "A page-level control that shows exactly one embedded adr_card at a time, chosen from a custom listbox listing every ADR in the post. Superseded adr_tree_connector as the default way to move between related ADRs — see that component's entry for the single narrow case it still covers.",
+      "trigger": "Render whenever a post embeds 2 or more adr_cards. Not rendered for a single-ADR post — there's nothing to switch between.",
+      "position": "Once per post, after the intro prose_block and any tree_slice_view, immediately before the first (and, at any moment, only visible) adr_card.",
+      "default_selection": "Whichever embedded ADR currently has status Accepted — not structurally the root. Derived at runtime from each card's own status_chip, not from a hardcoded 'selected' option, so the default can't drift out of sync if a card's status changes later. If more than one node is Accepted (a chain where several decisions have all matured), the deepest/most-recent one wins, evaluated in document order (root to leaf). If nothing is Accepted yet — a tree still entirely in Proposed status — falls back to whatever the static markup marks as selected, which should normally be the root, since there's no settled state yet to prefer over it.",
+      "underlying_markup": "A real native <select> (one <option> per embedded ADR, indented with ↳ per depth level, labeled '{id} — {title}', carrying an opt-{status-name} class per option) — this is what a no-JS visitor sees and uses directly, and what the JS-built listbox stays synced to as its source of truth.",
+      "presented_markup": "Built by JS on top of the <select>, once JS confirms it can run: a <button aria-haspopup=\"listbox\" aria-expanded> mirroring the current selection's label, plus a <ul role=\"listbox\"><li role=\"option\" aria-selected> per option, with each <li> carrying the same opt-{status-name} class copied from its source <option> — colored with that ADR's status-{name}-dark token. This exists specifically because native <option> color is not reliably respected by the open dropdown popup: Chrome and Safari draw it with OS-native chrome the page's CSS cannot reach, Firefox only partially honors it. Ordinary DOM (button + ul/li) is fully CSS-stylable everywhere, which a native <select>'s popup is not.",
+      "behavior": [
+        "Selecting an option (via click or Enter/Space on a listbox item) shows that adr_card and hides every other embedded adr_card via the native `hidden` attribute (removed from the accessibility tree while hidden, not just visually).",
+        "Implemented with a small amount of unobtrusive JavaScript — the one component in this system that requires it, both to switch between mutually exclusive panels (no clean zero-JS equivalent, the way <details> solves single-panel disclosure) and to render option colors reliably at all (see presented_markup).",
+        "Progressive enhancement is mandatory at two layers, not one: (1) the `hidden` attribute on adr_cards must never be present in static markup, only set at runtime; (2) the custom button+listbox must never be the only markup for the control — the native <select> underneath is what a no-JS visitor sees and uses, unstyled but fully functional as a real form control. Once the custom listbox is built, the native <select> is set `hidden` too, since the button+listbox now carries equivalent ARIA semantics and leaving both exposed would double-announce to assistive tech."
+      ],
+      "rules": [
+        "Every adr_card must carry a `data-adr-id` (or schema-equivalent) attribute matching its id, for the switcher to target.",
+        "The switcher's option order must match the tree's depth-first reading order, root first.",
+        "The option corresponding to the currently Accepted node is annotated in its label text (e.g. '(Accepted)') — the only status called out in the option list, since 'not yet accepted' is the assumed default and doesn't need repeating on every other option.",
+        "Never attempt to color a native <option> element directly as the primary mechanism — build the listbox replacement instead. A CSS rule targeting `select option.opt-*` may appear to work in isolated testing (some browsers honor it for the closed state) and then silently fail in the actual open dropdown in the majority of real usage.",
+        "Clicking a relation_note's link to a related ADR must move the switcher to that ADR (see relation_note.behavior) by setting the underlying <select>'s value and dispatching a change event, so both the visible cards and the custom listbox's displayed selection stay in sync through one code path — not by calling a card-visibility function directly and leaving the listbox display stale."
+      ]
+    },
+
+    "relation_note": {
+      "description": "A short, self-orientation line inside a non-root adr_card, stating what it depends on and why — needed because, with adr_switcher in use, a reader can land on any card first, not necessarily after having just read its parent.",
+      "position": "Top of adr_card__body, before the decision_summary_fields.",
+      "format": "{depth_marker} extends|related to|supersedes {parent_id} — {one_clause_reason}",
+      "anatomy": ["depth_marker (↳ per level of depth)", "jump_link (to the parent adr_id)", "one-clause reason"],
+      "rules": [
+        "Required on every non-root adr_card once adr_switcher is in use — a child card must never assume the reader has already seen its parent.",
+        "The jump_link must invoke the same switching mechanism as adr_switcher itself (see adr_switcher.rules), not a plain in-page anchor, since the target card may currently be hidden."
+      ]
+    },
+
+    "adr_tree_connector": {
+      "description": "DEPRECATED as a between-cards element now that adr_switcher exists — retained only as the literal syntax reused inside tree_slice_view's expanded listing (see that component). Do not render this as a standalone element between two visible adr_cards; with adr_switcher in use, cards are not both visible at once for a connector to sit between.",
+      "format": "{parent_id}\\n  └─ {child_id}  {relationship_verb} — {one_line_reason}",
+      "relationship_verbs": ["extends", "related to", "supersedes"],
+      "superseded_by": ["adr_switcher", "relation_note"]
+    },
+
+    "adr_card": {
+      "description": "A self-contained, embeddable architecture decision record. A single post may contain one or many.",
+      "anatomy": {
+        "head": ["adr_tag ('ADR')", "adr_id", "adr_card_title", "status_chip"],
+        "body": ["decision_summary_fields", "impact_legend", "impact_grid", "decision_rule", "dossier_panel (repeated, 1..n)"]
+      },
+      "variants": [
+        { "name": "full",      "typical_dossier_sections": 6, "use_when": "primary/parent decision carrying most of the post's evidence" },
+        { "name": "condensed", "typical_dossier_sections": "2-3", "use_when": "child/dependent decision that leans on the parent ADR for shared context" }
+      ],
+      "rules": [
+        "adr_id for a child decision uses dotted notation off its parent (e.g. parent AD-014, child AD-014.1).",
+        "status_chip values: Proposed, Accepted, Deprecated, Superseded.",
+        "Card border uses border.emphasis (solid ink) to read as a distinct module against surrounding prose."
+      ]
+    },
+
+    "decision_summary_fields": {
+      "description": "A two-row definition list at the top of an adr_card body.",
+      "fields": ["Problem", "Solution"],
+      "rules": [
+        "Each field value should be readable in a single breath — one to two sentences.",
+        "Always rendered open, never collapsed."
+      ]
+    },
+
+    "impact_grid": {
+      "description": "A 2x2 (collapsing to 1-column under 520px) grid of trade-off cards, one per axis.",
+      "axes": ["cognitive_load", "performance", "reliability", "evolvability"],
+      "constraints": {
+        "max_words_per_axis": 50,
+        "indicator_system": {
+          "improves": { "shape": "filled circle", "class": "impact-dot--pos" },
+          "trade_off_to_watch": { "shape": "hollow ring", "class": "impact-dot--watch" }
+        }
+      },
+      "rules": [
+        "A legend (impact_legend) explaining the filled-vs-hollow dot convention must appear once per adr_card, directly above the grid.",
+        "Every axis is required — do not omit an axis because it's neutral; state 'neutral to positive, conditional on X' instead.",
+        "Never use color to distinguish indicator states; state is carried by fill only."
+      ]
+    },
+
+    "decision_rule": {
+      "description": "A scannable, binary-branch checklist a reader can apply without reading the rest of the card.",
+      "anatomy": ["heading", "rule_branch (repeated, typically 2)", "rule_note (optional secondary heuristic)"],
+      "rules": [
+        "Always rendered open. This is the one section of an adr_card that must never be behind a <details> disclosure.",
+        "Each branch is marked with a single glyph (✓ / ✗) rather than color, consistent with the monochrome palette.",
+        "rule_note, if present, gives a rough quantitative heuristic (e.g. a numeric threshold) rather than another qualitative rule."
+      ]
+    },
+
+    "dossier_panel": {
+      "description": "A single collapsible detail section inside an adr_card, implemented as native <details>/<summary> — no JS dependency required for open/close behavior.",
+      "anatomy": ["dossier_index (single letter badge)", "dossier_title", "dossier_hint (optional, hidden below 560px)", "chevron", "dossier_content"],
+      "canonical_section_order": ["Context", "Rationale & Evidence", "Consequences", "Alternatives Considered", "When to Revisit", "References"],
+      "rules": [
+        "Index letters (A, B, C...) must reflect true document order and must not be reused if a section is removed for a condensed variant — renumber contiguously instead.",
+        "Collapsed by default. The only exception in this system is decision_rule, which is a separate, always-open component.",
+        "chevron rotates 90deg on open via CSS attribute selector on [open]; respects prefers-reduced-motion by disabling the transition, not the state change."
+      ]
+    },
+
+    "status_chip": {
+      "description": "A small bordered label indicating an ADR's review state. Color-coded as of v1.4 — the first deliberate exception to the monochrome palette, and one anticipated from v1.0 onward (this component was always structured so color could be added per-status without a markup change).",
+      "values": {
+        "New Proposal":     { "color_token": "status-new-proposal",     "hex": "#2c4870", "meaning": "freshly drafted, not yet reviewed" },
+        "Needs Discussion": { "color_token": "status-needs-discussion", "hex": "#a8631a", "meaning": "under active review; open questions remain" },
+        "Accepted":         { "color_token": "status-accepted",        "hex": "#3f7d5c", "meaning": "ratified, currently in effect" },
+        "Rejected":         { "color_token": "status-rejected",        "hex": "#b33a3a", "meaning": "reviewed and declined" },
+        "Deprecated":       { "color_token": null, "meaning": "was accepted, no longer recommended — retained from the pre-color enum, intentionally uncolored" },
+        "Superseded":       { "color_token": null, "meaning": "replaced by a later decision — retained from the pre-color enum, intentionally uncolored" }
+      },
+      "color_substitution_note": "'Yellow' is implemented as a muted amber/ochre (#a8631a), not a literal saturated yellow — legibility as small bordered text and border color against a white background degrades badly with true yellow. Same reasoning applies to all four: each is the dark/muted variant of its hue family, not the bright version, matching the register of the rest of the palette.",
+      "rendering": "1px solid {status color} border, {status color} text, small filled square glyph before the label in the same color. Deprecated/Superseded keep the original 1px solid ink / ink text treatment — no color assigned to them. As of v1.5, a card's status also tints its adr_card__head background with a pale wash of the same color (status-{name}-bg tokens) — light enough that the existing ink-colored heading text stays fully legible on top — so the status reads at a glance from the card itself, not only from the small chip.",
+      "rules": [
+        "Color is reinforcement, never the only signal — the status name is always present as text, so a colorblind reader or a black-and-white printout loses nothing.",
+        "Do not invent additional hues beyond these four without updating this table first — the point of a fixed small palette is that a reader learns it once across every post using this system, not per-post."
+      ]
+    },
+
+    "footer_note": {
+      "description": "A single closing line naming which ADR ids the post embeds, for scannability when a post is skimmed bottom-up or shared as a link.",
+      "example": "Platform & Architecture · this post embeds AD-014 and AD-014.1 · prototype layout, static HTML/CSS"
+    },
+
+    "version_badge": {
+      "description": "A small bordered tag naming the committed system version, commit, or fork an ADR is bound to.",
+      "format_examples": ["main @ a3f9c1e", "agent-runtime @ f6b21d0", "v2.1.0"],
+      "rendering": "mono type, ink-soft color, 1px solid ink-faint border, no fill",
+      "rules": [
+        "Required on any adr_card that participates in a tree deeper than a single parent/child pair (i.e., wherever tree_slice_view is triggered).",
+        "Optional, but recommended, on a standalone ADR or a simple one-level parent/child pair.",
+        "Free-form string — this system does not mandate git-SHA vs. semver vs. fork-name, since different teams version differently. Pick one convention per post and stay consistent within it."
+      ]
+    },
+
+    "references_at_scale": {
+      "description": "A single post-level dropdown that aggregates every unique reference cited across all embedded ADR cards, deduplicated, each entry noting which ADR id(s) cite it. Sits alongside, not instead of, each card's own per-card References dossier panel.",
+      "trigger": "Render when the post embeds 3 or more ADR cards, OR when the count of unique references across all cards is 5 or more — whichever comes first.",
+      "position": "Immediately after the last embedded adr_card, before the closing prose_block.",
+      "anatomy": ["trigger_summary ('All References (N)')", "deduplicated_reference_list"],
+      "rules": [
+        "Never replaces a card's own per-card References panel — each ADR must remain independently readable without navigating elsewhere; this component is a convenience index, not the only copy.",
+        "Each entry shows the source once, followed by which ADR id(s) cite it, e.g. 'AMD ROCm Blog, \"Enabling Physical AI Agents with Lemonade\" — cited in AD-014, AD-014.1.1'.",
+        "Collapsed by default, consistent with every other dossier-style disclosure in this system."
+      ],
+      "markup_shape": "<details class=\"scale-panel\"><summary>All References ({n})</summary><ul>…</ul></details>"
+    },
+
+    "tree_slice_view": {
+      "description": "A single, page-level collapsible component rendering the full relevant ADR subtree for the post, organized by layer (depth = indentation), with each node annotated with its version_badge. An overview map, independent of adr_switcher's per-card navigation — expanding it does not change which adr_card is currently visible.",
+      "trigger": "Render when the post's declared ADR relationships form a structure with depth > 2 (a grandchild or deeper) OR breadth > 1 (more than one child off the same parent). A single parent + single child relies on adr_switcher plus each card's own relation_note instead.",
+      "position": "Once per post, after the intro prose_block and ascii_system_diagram (if present), before the first adr_card — functions as a map of the territory the reader is about to walk through.",
+      "anatomy": ["trigger_summary ('View full decision tree (N nodes · M layers)')", "layered_node_list"],
+      "node_fields": ["id", "relationship_verb (for non-root nodes)", "one_line_title (optional, for map density this may be omitted in favor of id + relationship only)", "version_badge"],
+      "rules": [
+        "Layers are rendered by indentation depth, matching the post's actual reading order top to bottom, root first.",
+        "Every node shown here must correspond to an adr_card actually embedded in the post, or to a relationships.target explicitly declared in the content model — never a decision the post doesn't otherwise reference.",
+        "Collapsed by default. This is a navigation aid for a reader who wants the shape before the detail, not a mandatory read.",
+        "Do not render this component for a single parent/child pair if adr_switcher plus relation_note already communicates it adequately — reserve the heavier layer view for when depth or breadth actually earns its weight."
+      ],
+      "example": "AD-014                                    [main @ a3f9c1e]\n └─ AD-014.1   extends                    [main @ a3f9c1e]\n      └─ AD-014.1.1   extends             [agent-runtime @ f6b21d0]"
+    }
+  },
+
+  "content_model": {
+    "page": {
+      "contains_in_order": [
+        "blog_header",
+        "prose_block (intro, 1..n paragraphs)",
+        "ascii_system_diagram (0 or 1, optional)",
+        "tree_slice_view (0 or 1 — only when the tree's relationships exceed a single parent/child pair; see components.tree_slice_view.trigger)",
+        "adr_switcher (0 or 1 — only when the post embeds 2 or more adr_cards; see components.adr_switcher.trigger)",
+        "repeated: [adr_card (relation_note as its first body element if non-root; only one adr_card visible at a time once adr_switcher is present, the rest hidden via its script)]",
+        "references_at_scale (0 or 1 — only when components.references_at_scale.trigger is met)",
+        "prose_block (closing)",
+        "footer_note"
+      ]
+    },
+    "adr_card_schema": {
+      "id": "string — e.g. 'AD-014' for a parent, 'AD-014.1' for a first-level child",
+      "status": "enum: Proposed | Accepted | Deprecated | Superseded",
+      "title": "string, imperative or noun-phrase decision title",
+      "problem": "string, 1-2 sentences",
+      "solution": "string, 1-2 sentences",
+      "impact": {
+        "cognitive_load": "string, <= 50 words",
+        "performance": "string, <= 50 words",
+        "reliability": "string, <= 50 words",
+        "evolvability": "string, <= 50 words"
+      },
+      "decision_rule": {
+        "branches": [
+          { "mark": "✓ | ✗", "condition": "string" }
+        ],
+        "secondary_signal": "string, optional"
+      },
+      "sections": [
+        { "index": "A | B | C ...", "title": "string", "content": "markdown or html" }
+      ],
+      "relationships": [
+        { "type": "extends | related_to | supersedes", "target": "adr id string" }
+      ],
+      "system_ref": "string, optional (required once this card is part of a tree with depth > 2 or breadth > 1) — the committed system version, commit, or fork this decision is bound to, e.g. 'main @ a3f9c1e' or 'v2.1.0'."
+    }
+  },
+
+  "accessibility": {
+    "focus_visible": "All interactive elements (links, summary triggers) show a 2px solid ink outline with 3px offset on :focus-visible.",
+    "collapsibles": "Implemented with native <details>/<summary> for built-in keyboard operability and screen reader semantics — no custom JS accordion.",
+    "reduced_motion": "@media (prefers-reduced-motion: reduce) disables the chevron rotation transition; the open/closed state change itself is never motion-dependent.",
+    "color_independence": "No information is conveyed by color alone anywhere in the system. status_chip (v1.4) is the one colored component, and its status is always also present as uppercase text in the same element — remove the color entirely (print it in black and white, view it with a color-vision deficiency) and every status is still fully legible."
+  },
+
+  "responsive_breakpoints": {
+    "560px": "dossier_hint text hidden below this width to save horizontal space in the summary row",
+    "620px": "consequence_cols (inside a Consequences dossier panel) collapse from 2 columns to 1",
+    "520px": "impact_grid collapses from 2 columns to 1; decision_summary_fields grid collapses from 2 columns to 1 stacked"
+  },
+
+  "anti_patterns": [
+    "Placing an 'Architecture Decision · AD-0XX' label at the page/header level, implying the entire post is one document.",
+    "Using color (rather than fill/shape) to distinguish impact_grid indicator states.",
+    "Writing an impact_grid axis body over 50 words — if it needs more space, the reasoning belongs in a dossier_panel, not the summary.",
+    "Collapsing the decision_rule component — it is the one thing a reader needs even if they read nothing else.",
+    "Rendering an adr_tree_connector as a standalone element between two visible adr_cards — that pattern is deprecated; use adr_switcher plus relation_note instead.",
+    "Using the mono type family for prose body copy.",
+    "Skipping a prose transition before an embedded adr_card sequence, so it appears with no narrative reason for being there.",
+    "Rendering tree_slice_view for a single parent/child pair — that is what adr_switcher plus relation_note is for; reserve the layer view for when the tree actually has depth or breadth.",
+    "Adding an ADR to a tree slice without a system_ref once the tree is deep or wide enough to require tree_slice_view — the version binding is what makes the layer view navigable rather than just decorative.",
+    "Letting references_at_scale replace a card's own per-card References panel instead of supplementing it.",
+    "Hardcoding the `hidden` attribute on any adr_card in static markup — it must only ever be set at runtime by adr_switcher's script, or a no-JS visitor loses access to that ADR entirely.",
+    "Writing a non-root adr_card without a relation_note — once adr_switcher is in use, a reader can land on that card first with no other context.",
+    "Defaulting adr_switcher to the root/parent ADR by position rather than deriving the default from status — a tree whose settled state has moved past its root (or superseded it) should default to what's actually Accepted, not to whichever node happens to be structurally first.",
+    "Hardcoding which <option> has `selected` as the source of truth for the default instead of deriving it from each card's live status_chip — the two can drift apart the moment a status changes and the markup isn't updated to match."
+  ]
+}

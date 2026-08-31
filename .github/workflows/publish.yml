@@ -2,7 +2,10 @@ name: Publish
 
 # Runs only when a GitHub Release is published — never on a plain push or
 # tag. Left unexecuted until the maintainer explicitly cuts a release; do
-# not trigger this manually.
+# not trigger this manually. Builds and publishes atlasboxpy_controller
+# only — atlasboxpy_repository (packages/atlasboxpy_repository/) is a
+# separate package with its own release cadence and would need its own
+# workflow when it's ready to publish.
 on:
   release:
     types: [published]
@@ -10,6 +13,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/atlasboxpy_controller
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,7 +28,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: packages/atlasboxpy_controller/dist/
 
   publish:
     needs: build

@@ -1,7 +1,7 @@
 import uuid
 
-from validator_gateway import AlreadyExistsError, NotFoundError
-from validator_gateway.fastapi_integration import extract_patch_data
+from atlasboxpy_controller import AlreadyExistsError, NotFoundError
+from atlasboxpy_controller.fastapi_integration import extract_patch_data
 
 from .exceptions import UsernameReservedError
 from .models import CreateUserRequest, UpdateUserRequest, UserOut
@@ -12,7 +12,7 @@ _RESERVED_NAMES = {"admin", "root"}
 class UserService:
     """Fake in-memory repository + business logic, standing in for a real
     database-backed service. What matters for this example is that it
-    raises validator_gateway's DomainError subclasses — it doesn't know or
+    raises atlasboxpy_controller's DomainError subclasses — it doesn't know or
     care that a gateway or an HTTP route exists."""
 
     def __init__(self) -> None:

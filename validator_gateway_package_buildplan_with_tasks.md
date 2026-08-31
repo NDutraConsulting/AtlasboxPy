@@ -7,6 +7,47 @@ Work through the phases in order. Each task has a **Do** (what to build), a **Fi
 
 ---
 
+## Superseded: the `ValidatorGateway`/`handle()` design below was replaced
+
+Everything below this notice describes the package's original design: a
+`ValidatorGateway` object wrapping a `Controller`, invoked via
+`gateway.handle(action, *args, **kwargs)`, with an optional
+`RecoveryEngine` for retry/redirect/queue and an opt-in
+`ClassifyingValidatorGateway` for per-code classification. That design was
+fully built (Phases 0–12 below are historically accurate) and then
+**replaced** after real usage (`examples/fastapi_kanban`) showed two
+problems: per-request gateway construction didn't scale past one feature,
+and classifying failures in an external class duplicated knowledge the
+controller already had.
+
+The package now works differently:
+
+- No `ValidatorGateway`, no `handle()`. `BaseController`/`ExceptionFormatter`
+  wrap every public async method on a subclass automatically
+  (`__init_subclass__`) — calling a method directly already returns a
+  `SuccessResponse`/`ErrorResponse`.
+- No recovery/redirect engine, no `classifying.py`. A controller method
+  decides what a failure means (a hint, a degraded fallback) by building
+  the response directly, inline, in the method that has the context.
+- `on_exception`/`on_complete` hooks are gone — failure logging is built
+  into `BaseController` via `self.logger`.
+
+The package was also renamed: `validator_gateway` is now `atlasboxpy_controller`
+(`pip install atlasboxpy_controller`, CLI `atlasboxpy-controller`) — see
+`CHANGELOG.md`'s "Renamed" entry. A companion package, `atlasboxpy_repository`
+(`packages/atlasboxpy_repository/`), was split out at the same time. Every
+`validator_gateway`/`validator-gateway` mention below is the old name — this
+file is kept as a historical record and is not being retitled throughout.
+
+See `docs/architecture.md`, `docs/extending.md`, and `CHANGELOG.md`'s
+"Changed" entry for the current design. The phase-by-phase history below is
+kept for context on *why* things are the way they are, not as a
+specification of current behavior — treat any mention of `ValidatorGateway`,
+`gateway.handle()`, `RecoveryEngine`, or `ClassifyingValidatorGateway` past
+this point as historical, not current.
+
+---
+
 ## Design Decisions (fixed — do not deviate without flagging)
 
 1. **Package name:** `validator_gateway`, importable as `import validator_gateway`.
@@ -328,6 +369,11 @@ This is the vocabulary every other phase builds on. Controllers/services raise t
   **Do:** Document (and implement) that `BaseException` subtypes like `KeyboardInterrupt` and `SystemExit` are **not** caught by `handle()` — only `Exception` and below. Add an explicit test proving this.
   **File(s):** `src/validator_gateway/gateway.py`, `tests/test_gateway.py`
   **Acceptance:** Raising `SystemExit` inside a controller method propagates out of `handle()` uncaught.
+
+- [x] **P4-T4: `on_complete` hook — full request/response visibility**
+  **Do:** `ValidatorGateway.__init__` gains `on_complete: OnCompleteHook | None = None`, where `OnCompleteHook = Callable[[str, tuple[Any, ...], dict[str, Any], SuccessResponse[Any] | ErrorResponse], None]`. Unlike `on_exception` (failure-only), `on_complete` fires exactly once at the end of every `handle()` call — success, error, and a recovery that succeeds all reach it — so a developer gets full traffic/audit visibility (action name, args/kwargs, final response) without subclassing `handle()` just for logging. Required refactoring `handle()` to route every branch through one `response` variable and a single `self._complete(...)` call before returning.
+  **File(s):** `src/validator_gateway/gateway.py`, `tests/test_gateway.py`, `docs/extending.md`
+  **Acceptance:** `on_complete` fires once for a success, once for a plain failure, and once (with a success response) when `RecoveryEngine` recovers a failure — never zero times, never twice. `examples/fastapi_kanban`'s `KanbanValidatorGateway` uses it in place of a hand-rolled `handle()` override for its traffic log, replacing the `ClassifyingValidatorGateway`-based approach it used previously (see P11-T6): the controller's own methods now decide hints and degraded fallbacks inline, since "what a failure means" turned out to be the controller's job, not an external classifier's.
 
 ---
 

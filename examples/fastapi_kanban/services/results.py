@@ -2,7 +2,7 @@
 
     {status: [success, error, timeout], msg: "", result: {type: [object|array|map], data: ...}}
 
-Services never raise DomainError and never know validator_gateway exists —
+Services never raise DomainError and never know atlasboxpy_controller exists —
 that translation is the controller's job (see
 controllers/kanban_controller.py's `_unwrap` helper). A service is only
 ever right or wrong about *its own* operation; it has no opinion about
@@ -13,16 +13,23 @@ dict carrying a machine-readable `code` (e.g. "not_found", "conflict")
 alongside any extra context. That's deliberate: the envelope has no
 separate top-level "error code" field, so this is where the controller
 gets enough to raise the *right* DomainError subclass instead of a generic
-one, without services needing to import validator_gateway at all.
+one, without services needing to import atlasboxpy_controller at all.
 """
 
 from __future__ import annotations
 
+import functools
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, ParamSpec
+
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as SATimeoutError
 
 ResultType = Literal["object", "array", "map"]
+
+P = ParamSpec("P")
 
 
 class ServiceStatus(str, Enum):
@@ -71,3 +78,25 @@ class ServiceResult:
             if isinstance(code, str):
                 return code
         return "error"
+
+
+def translate_db_errors(
+    fn: Callable[P, Awaitable[ServiceResult]],
+) -> Callable[P, Awaitable[ServiceResult]]:
+    """Wraps a service method so any real database failure — a simulated
+    one (see db_simulation.py) or a genuine one in production — comes back
+    as a ServiceResult instead of an uncaught exception. Lives here (not
+    in db_simulation.py) because it builds ServiceResults, a services/-only
+    concept; db_simulation.py itself is a sibling of db.py specifically so
+    repositories/ can depend on it without depending on services/."""
+
+    @functools.wraps(fn)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> ServiceResult:
+        try:
+            return await fn(*args, **kwargs)
+        except SATimeoutError as exc:
+            return ServiceResult.timeout(str(exc))
+        except OperationalError as exc:
+            return ServiceResult.error(str(exc), code="upstream_error")
+
+    return wrapper

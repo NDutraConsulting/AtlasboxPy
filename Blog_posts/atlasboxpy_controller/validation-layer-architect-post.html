@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Validation Layer That's Trapped Inside Your HTTP Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #ffffff;
+    --paper-raised: #fafafa;
+    --line: #dddddd;
+    --line-strong: #a8a8a8;
+    --ink: #111111;
+    --ink-soft: #555555;
+    --ink-faint: #8a8a8a;
+
+    --sans: "Open Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: var(--ink); }
+  a:focus-visible, summary:focus-visible, details:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+
+  .kicker {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 16px;
+  }
+
+  h1.title {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: clamp(28px, 5.2vw, 44px);
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    margin: 0 0 16px;
+    color: var(--ink);
+  }
+
+  .dek {
+    font-size: 19px;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-soft);
+    max-width: 58ch;
+    margin: 0 0 26px;
+  }
+
+  .byline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line-strong);
+    margin-bottom: 36px;
+  }
+  .byline .sep { color: var(--line-strong); }
+  .byline strong { color: var(--ink); font-weight: 600; }
+
+  .prose p { margin: 0 0 20px; font-size: 17px; }
+  .prose h2 { font-size: 23px; font-weight: 700; margin: 44px 0 16px; color: var(--ink); }
+
+  .diagram-wrap { margin: 8px 0 36px; }
+  .diagram-label {
+    font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 0 0 10px;
+  }
+  pre.ascii {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.5; color: var(--ink);
+    background: var(--paper-raised); border: 1px solid var(--line-strong);
+    padding: 20px 18px; overflow-x: auto; margin: 0;
+  }
+
+  .adr-card { border: 1px solid var(--ink); background: var(--paper); margin: 0 0 40px; }
+
+  .adr-card__head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+    padding: 16px 22px; border-bottom: 1px solid var(--line-strong); background: var(--paper-raised);
+  }
+  .adr-tag { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: var(--ink-soft); }
+  .adr-id { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); }
+  .adr-card__head h3 { font-size: 16px; font-weight: 700; margin: 0; flex: 1; min-width: 180px; }
+  .version-badge {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+    border: 1px solid var(--ink-faint); padding: 2px 7px; white-space: nowrap;
+  }
+
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px;
+    border: 1px solid var(--ink); color: var(--ink); font-family: var(--mono);
+    font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 10.5px;
+  }
+  .status-chip::before { content: ""; width: 6px; height: 6px; background: var(--ink); display: inline-block; }
+
+  .adr-card__body { padding: 26px 22px 6px; }
+
+  .field {
+    display: grid; grid-template-columns: 100px 1fr; gap: 4px 18px;
+    padding: 13px 0; border-top: 1px solid var(--line);
+  }
+  .field:first-of-type { border-top: none; padding-top: 0; }
+  .field dt {
+    font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+    color: var(--ink); text-transform: uppercase; padding-top: 2px;
+  }
+  .field dd { margin: 0; font-size: 15.5px; line-height: 1.55; }
+
+  .impact-legend {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
+    display: flex; gap: 18px; margin: 16px 0 0;
+  }
+  .impact-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .impact-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line);
+    border-top: 1px solid var(--line); margin-top: 12px;
+  }
+  .impact-card { background: var(--paper); padding: 15px 17px 17px; }
+  .impact-card__label {
+    display: flex; align-items: center; gap: 8px; font-family: var(--mono);
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink); margin-bottom: 8px;
+  }
+  .impact-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1.5px solid var(--ink); background: transparent; }
+  .impact-dot--pos { background: var(--ink); }
+  .impact-dot--watch { background: transparent; }
+  .impact-card p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-soft); }
+
+  .rule-block { border-left: 3px solid var(--ink); padding: 4px 0 4px 20px; margin: 26px 0 4px; }
+  .rule-block h4 {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink); margin: 0 0 12px;
+  }
+  .rule-branch { display: grid; grid-template-columns: 20px 1fr; gap: 2px 10px; margin-bottom: 10px; }
+  .rule-branch__mark { font-family: var(--mono); font-weight: 700; color: var(--ink); }
+  .rule-branch p { margin: 0; font-size: 15px; }
+  .rule-note { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line-strong); }
+
+  .dossier-panel { border-top: 1px solid var(--line); }
+  .adr-card__body .dossier-panel:first-of-type { border-top: 1px solid var(--line); margin-top: 22px; }
+  .dossier-panel:last-child { border-bottom: none; }
+  .dossier-panel summary {
+    list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
+    padding: 14px 2px; -webkit-tap-highlight-color: transparent;
+  }
+  .dossier-panel summary::-webkit-details-marker { display: none; }
+  .dossier-index {
+    font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink);
+    border: 1px solid var(--ink); width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+  }
+  .dossier-title { font-size: 14.5px; font-weight: 600; color: var(--ink); flex: 1; }
+  .chevron { font-family: var(--mono); font-size: 15px; color: var(--ink-faint); transition: transform 180ms ease; flex: none; }
+  .dossier-panel[open] .chevron { transform: rotate(90deg); color: var(--ink); }
+  .dossier-content { padding: 2px 2px 22px 34px; }
+  .dossier-content p { margin: 0 0 13px; font-size: 15px; }
+  .dossier-content p:last-child { margin-bottom: 0; }
+  .dossier-content ul, .dossier-content ol { margin: 0 0 13px; padding-left: 20px; }
+  .dossier-content li { margin-bottom: 7px; font-size: 15px; }
+
+  .consequence-cols { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 560px) { .consequence-cols { grid-template-columns: 1fr 1fr; } }
+  .consequence-cols h5 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase;
+    margin: 0 0 9px; color: var(--ink-faint);
+  }
+
+  pre.snippet {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--ink);
+    background: var(--paper-raised); border: 1px solid var(--line); padding: 14px 16px;
+    overflow-x: auto; margin: 4px 0 16px;
+  }
+
+  code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: var(--paper-raised); border: 1px solid var(--line); padding: 1px 5px;
+  }
+
+  @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }
+
+  @media (max-width: 520px) {
+    .impact-grid { grid-template-columns: 1fr; }
+    .field { grid-template-columns: 1fr; }
+    .field dt { padding-top: 0; }
+  }
+
+  .footer-note {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line-strong);
+    font-size: 13px; color: var(--ink-faint);
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header>
+    <p class="kicker">Systems &amp; Architecture</p>
+    <h1 class="title">The Validation Layer That's Trapped Inside Your HTTP Framework</h1>
+    <p class="dek">Pydantic and FastAPI make request validation feel solved. It isn't — it's just solved for the one caller you originally had in mind. The moment a worker, an agent, or a gRPC service needs the same business logic, the coupling you didn't know you had starts costing you.</p>
+    <div class="byline">
+      <span><strong>Platform &amp; Architecture</strong></span>
+      <span class="sep">·</span>
+      <span>18 Aug 2026</span>
+      <span class="sep">·</span>
+      <span>8 min read</span>
+      <span class="sep">·</span>
+      <span>references 1 ADR proposal</span>
+    </div>
+  </header>
+
+  <div class="prose">
+    <p>The ticket read something like: <em>"Clearing a user's middle name from their profile wipes their last name too."</em> The endpoint was an unremarkable <code>PATCH /users/{id}</code>. The bug was one line — <code>update.dict()</code> includes default <code>None</code> values, so a field the client never sent looked identical to a field the client explicitly cleared. The fix was one keyword, <code>exclude_unset=True</code>. Ticket closed.</p>
+    <p>Except it wasn't really about that endpoint. It was the first visible symptom of something structural: two more gaps in the Pydantic/FastAPI story share the same root cause. Validators can't run async, so a business rule needing I/O has to move into the route body, after "validation" has technically already passed. And FastAPI's <code>response_model</code> re-validates on the way out, so a mismatch surfaces as an opaque 500 <em>after</em> a database write has already committed. None of this is really about validating shapes — Pydantic is excellent at that. It's that business-rule enforcement, error formatting, and response shaping have quietly become the HTTP layer's job, written under the assumption that a single waiting browser is the only caller that will ever exist.</p>
+    <p>That assumption is invisible for as long as HTTP is the only caller. We formalized the fix as a decision the first time it stopped being invisible.</p>
+  </div>
+
+  <div class="diagram-wrap">
+    <p class="diagram-label">System shape</p>
+    <pre class="ascii">
+   thin api_route         event_queue worker         security agent
+       │                        │                          │
+       └────────────────────────┼──────────────────────────┘
+                                 │
+                                 ▼
+                      ┌────────────────────┐
+                      │     Controller      │   one call path
+                      │  (BaseController)   │   one error taxonomy
+                      └──────────┬─────────┘    (inherited, not routed through)
+                                 │
+                                 ▼
+                      ┌────────────────────┐
+                      │  Services / Repo    │
+                      └────────────────────┘
+    </pre>
+  </div>
+
+  <!-- ============ ADR ============ -->
+  <article class="adr-card">
+    <div class="adr-card__head">
+      <span class="adr-tag">ADR</span>
+      <span class="adr-id">AD-001</span>
+      <h3>Make the Controller Itself the Enforced Call Path, Not the Router</h3>
+      <span class="version-badge">main @ 6e21f0a</span>
+      <span class="status-chip">Accepted</span>
+    </div>
+    <div class="adr-card__body">
+
+      <dl>
+        <div class="field">
+          <dt>Problem</dt>
+          <dd>Business-rule validation, error formatting, and response shaping have quietly become the HTTP layer's job — coupled to the assumption that only one HTTP client will ever call this logic. That coupling is invisible until a worker, an agent, or another service needs the same business rules.</dd>
+        </div>
+        <div class="field">
+          <dt>Solution</dt>
+          <dd>Subclass a <code>BaseController</code> that wraps every public async method automatically, at class-definition time — the try/except, response formatting, and error vocabulary are enforced by inheritance, not by routing every call through a separate gateway object every caller has to remember to construct.</dd>
+        </div>
+      </dl>
+
+      <p class="impact-legend">
+        <span><span class="impact-dot impact-dot--pos" aria-hidden="true"></span> improves</span>
+        <span><span class="impact-dot impact-dot--watch" aria-hidden="true"></span> trade-off to watch</span>
+      </p>
+
+      <div class="impact-grid">
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Cognitive Load</p>
+          <p>One call path and one error vocabulary to learn, instead of three: what the route does, what the worker copies, and what almost inevitably drifts between them six months later.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Performance</p>
+          <p>Removes the temptation to have a worker call its own REST API over HTTP just to reuse validation — no network hop, no serialization round trip for what's really a function call.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Reliability</p>
+          <p>Every failure carries a real <code>retryable</code> flag every caller can check via <code>is_retryable(code)</code> — a structured signal instead of a message string to guess at. Deciding what to do with it (backoff, dead-letter, escalate) is left to the caller, deliberately, rather than hidden inside a policy engine.</p>
+        </div>
+        <div class="impact-card">
+          <p class="impact-card__label"><span class="impact-dot impact-dot--pos" aria-hidden="true"></span>Evolvability</p>
+          <p>A new caller — gRPC service, agent — needs zero adapter code: import the same controller class and call it directly. There's no gateway object to remember to construct, so there's no separate adoption step to skip.</p>
+        </div>
+      </div>
+
+      <div class="rule-block">
+        <h4>Decision Rule</h4>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✓</span>
+          <p><strong>Business logic will be called by more than one kind of caller</strong> — REST plus a worker, REST plus an agent, and so on — → build or reuse a <code>BaseController</code> subclass. Never duplicate the logic per caller.</p>
+        </div>
+        <div class="rule-branch">
+          <span class="rule-branch__mark">✗</span>
+          <p><strong>Logic is genuinely single-caller</strong> and will realistically stay that way → a direct implementation is fine. Don't reach for a base class for something that will never have a second caller.</p>
+        </div>
+        <p class="rule-note">Secondary signal: the moment a <em>second</em> kind of caller needs the same partial-update semantics or business rule, that's the trigger to move the logic into a shared controller — don't wait for a third.</p>
+      </div>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">A</span>
+          <span class="dossier-title">Context</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <p>The pattern started with a small, almost embarrassing bug: a <code>PATCH /users/{id}</code> endpoint that wiped a user's last name whenever the frontend only meant to clear their middle name. The cause was one line — <code>update.dict()</code> includes default <code>None</code> values, so an unset field and an explicitly-cleared field became indistinguishable. The one-keyword fix (<code>exclude_unset=True</code>) closed the ticket, but it wasn't really about that endpoint.</p>
+          <p>Two more gaps turned out to share the same root cause. Pydantic validators can't run async, so any business rule needing I/O — <em>is this email already registered?</em> — has to move into the route body, after "validation" has technically already passed. And FastAPI's <code>response_model</code> re-validates on the way out, so a mismatch surfaces as an opaque 500 after a database write has already committed. None of these are about validating shapes — Pydantic is excellent at that. They're about business-rule enforcement, error formatting, and response shaping quietly becoming the HTTP layer's job, written under the assumption that a single waiting HTTP client is the only caller that will ever exist.</p>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">B</span>
+          <span class="dossier-title">The Worker Case</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <p>A background worker draining a <code>UserUpdated</code> event queue needs the exact same partial-update semantics and business rules as the PATCH route. Duplicating that logic drifts the moment someone adds a rule to the API route and forgets the worker exists. Routing the worker through its own REST API to reuse the logic turns a same-process function call into a network operation — connection handling, retries, an auth story for a boundary that shouldn't need one.</p>
+          <p>The fix: import the same <code>UserController</code> the route already uses, and call it directly — no gateway to construct around it.</p>
+          <pre class="snippet">from atlasboxpy_controller.exceptions import is_retryable
+
+controller = UserController(user_service)
+
+async def drain_event_queue(queue):
+    async for event in queue:
+        result = await controller.apply_update(event.user_id, event.patch)
+        if result.status == "error":
+            if is_retryable(result.error.code):
+                await queue.retry_later(event)
+            else:
+                await queue.dead_letter(event)
+        else:
+            await queue.ack(event)</pre>
+          <p>Not every failure here should dead-letter the event — a temporarily-down search index should retry, not fail permanently. <code>is_retryable(code)</code> gives the worker a real, structured answer instead of a string to guess at. The retry loop, the backoff, the dead-letter threshold, stay the worker's own code — deliberately not something a hidden policy engine owns on its behalf.</p>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">C</span>
+          <span class="dossier-title">The Agent Case</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <p>An autonomous agent scanning logs for exposed credit card numbers and PII needs the same deduplication, PCI-scoping, and rate-limiting logic behind a human analyst's "flag a finding" button — not a reimplementation of it.</p>
+          <pre class="snippet">result = await controller.flag_finding(
+    finding_type=finding.kind,
+    log_ref=finding.log_ref,
+    masked_value=finding.masked_value,  # raw value never leaves the detector
+)
+if result.status == "error" and result.error.code == "permission_denied":
+    await escalate_to_security_team(finding, result.error)</pre>
+          <p>The payoff is sharpest here. An agent running unattended can't read an error message and decide what to do the way a person can — it needs a structured signal. <code>already_exists</code> means move on, not a failure. <code>is_retryable("upstream_error")</code> returns <code>True</code>, so the agent knows it's safe to back off and try again — the backoff loop itself is still the agent's own code. <code>permission_denied</code> is not retryable, ever — <code>DomainError</code> subclasses carry that as a literal <code>retryable</code> flag, and <code>is_retryable("permission_denied")</code> reflects it, so the agent's own decision logic knows to stop and escalate rather than burn its loop budget on something that can't succeed.</p>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">D</span>
+          <span class="dossier-title">Consequences</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <div class="consequence-cols">
+            <div>
+              <h5>What gets easier</h5>
+              <ul>
+                <li>One call path enforced structurally, not by convention — a controller method is never unwrapped, so there's nothing for a route or worker to "forget."</li>
+                <li>One response shape for every caller, browser, queue consumer, or agent.</li>
+                <li>One error vocabulary carrying HTTP/gRPC status mappings and a real <code>retryable</code> flag.</li>
+                <li>One place a failure gets logged — automatically, through <code>self.logger</code> — with nothing for a caller to wire up.</li>
+              </ul>
+            </div>
+            <div>
+              <h5>What we give up</h5>
+              <ul>
+                <li>Only sound if callers actually call the controller's public methods rather than reaching around it into a service directly — but there's no separate gateway object to forget to construct anymore, which removes the whole failure mode the previous design had.</li>
+                <li>A small amount of ceremony (a base class to inherit from) for logic that will genuinely only ever have one caller.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">E</span>
+          <span class="dossier-title">Alternatives Considered</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <ol>
+            <li><strong>Duplicate the validation and business logic per caller.</strong> Rejected — works on day one, drifts silently the first time one copy is updated and the others are forgotten.</li>
+            <li><strong>Have new callers reach the existing REST API over HTTP.</strong> Rejected — turns a same-process function call into a distributed-systems operation to avoid writing logic twice.</li>
+            <li><strong>A separate <code>ValidatorGateway</code> object wrapping the controller, called via <code>.handle()</code>.</strong> Superseded — an earlier version of this decision. It gave every caller the same guarantee, but added a second object every call site had to construct and remember to route through; a caller could still reach the raw controller and skip it entirely. It also grew an attached policy-driven recovery engine (retry/redirect/queue), which turned out to duplicate decisions that belonged to the caller, not the package.</li>
+            <li><strong>Controller subclasses a base class that wraps its own methods automatically. (Chosen.)</strong> No duplication, no network hop, no separate object to construct — the guarantee is structural because there's no unwrapped version of the method to accidentally call.</li>
+          </ol>
+        </div>
+      </details>
+
+      <details class="dossier-panel">
+        <summary>
+          <span class="dossier-index">F</span>
+          <span class="dossier-title">References</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="dossier-content">
+          <ul>
+            <li><code>atlasboxpy_controller</code> package, formerly <code>validator_gateway</code> (internal) — see its <code>CHANGELOG.md</code> for the full <code>ValidatorGateway</code> → <code>BaseController</code> migration history.</li>
+            <li>Related: AD-014, "Reserve MCP for Genuine Ownership Boundaries" — extends this decision once a tool needs to cross an ownership boundary, not just a transport boundary.</li>
+          </ul>
+        </div>
+      </details>
+
+    </div>
+  </article>
+
+  <div class="prose">
+    <h2>One contract, every caller</h2>
+    <p>The insight underneath all of this is small, but it compounds: put the enforced validation and error-handling contract inside the controller itself, not behind the router, and not behind a separate object every caller has to remember to construct. Do that, and a background worker, an autonomous agent, and eventually a gRPC servicer all get identical guarantees — one call path, one response shape, one error vocabulary — without a single line of adapter code written on their behalf. They just import the same controller class and call it directly.</p>
+    <p>The alternative — the thing that got that PATCH bug filed in the first place — is validation logic that only knows how to be an HTTP framework's helper. It works fine right up until something other than a browser needs to ask your business logic a question. Increasingly, something else always does.</p>
+  </div>
+
+  <p class="footer-note">Platform &amp; Architecture · this post embeds AD-001 · reference implementation of the Architect Post design system</p>
+
+</div>
+
+</body>
+</html>

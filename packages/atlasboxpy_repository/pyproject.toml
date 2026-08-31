@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlasboxpy_repository"
+version = "0.1.0"
+description = "A repository base class with a pluggable, read-through cache — swap between an in-memory dict and Redis via two config constants."
+readme = "README.md"
+authors = [
+    {name = "Nikko Dutra", email = "ndutra.consulting@gmail.com"},
+    {name = "NDutra Consulting"},
+]
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+
+[project.optional-dependencies]
+redis = ["redis>=5.0"]
+dev = ["pytest", "pytest-asyncio", "ruff", "mypy", "redis>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/TODO/atlasboxpy_repository"
+Repository = "https://github.com/TODO/atlasboxpy_repository"
+Issues = "https://github.com/TODO/atlasboxpy_repository/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atlasboxpy_repository"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+exclude = ["tests/"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

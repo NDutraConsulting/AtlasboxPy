@@ -1,4 +1,4 @@
-from validator_gateway import DomainError, register_status_mapping
+from atlasboxpy_controller import DomainError, register_status_mapping
 
 
 class UsernameReservedError(DomainError):

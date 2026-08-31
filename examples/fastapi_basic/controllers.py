@@ -1,4 +1,4 @@
-from validator_gateway import BaseController
+from atlasboxpy_controller import BaseController
 
 from .models import CreateUserRequest, UpdateUserRequest, UserOut
 from .services import UserService
