@@ -51,70 +51,92 @@ pip install -e ".[dev]"
 
 ### 1. Define a controller
 
-The preferred style: the method builds and returns its own `SuccessResponse`/`ErrorResponse` directly — an expected outcome is data, not something to raise.
+A controller owns and constructs its own service(s) — it takes whatever a
+service needs to be built (a session factory, a client, config), not a
+pre-built service instance. Nothing outside the controller should know a
+service exists, let alone construct one and hand it across that boundary.
+
+Each public method takes one argument, `props` — a plain dict — and
+validates it for itself via `validate_props`, against a Pydantic model
+that IS the method's contract. The preferred style from there: build and
+return `SuccessResponse`/`ErrorResponse` directly — an expected outcome is
+data, not something to raise.
 
 ```python
-from atlasboxpy_controller import BaseController, NotFoundError, SuccessResponse, build_error_response
+from pydantic import BaseModel
+from atlasboxpy_controller import BaseController, NotFoundError, SuccessResponse, build_error_response, validate_props
+
+class GetUserProps(BaseModel):
+    user_id: str
 
 class UserController(BaseController):
-    def __init__(self, user_service):
+    def __init__(self, db_session_factory):
         super().__init__()
-        self.user_service = user_service
+        self.user_service = UserService(db_session_factory)  # constructed here, not injected
 
-    async def get_user(self, user_id: str):
-        user = await self.user_service.find(user_id)
+    async def get_user(self, props: dict):
+        payload = validate_props(GetUserProps, props)
+        user = await self.user_service.find(payload.user_id)
         if user is None:
-            return build_error_response(NotFoundError(f"User {user_id} not found"))
+            return build_error_response(NotFoundError(f"User {payload.user_id} not found"))
         return SuccessResponse(data=user)
 ```
 
-Raising a `DomainError` still works, as a convenience escape hatch for anything simpler — `BaseController` catches it and formats it the same way:
+Raising a `DomainError` still works, as a convenience escape hatch for anything simpler — `BaseController` catches it and formats it the same way (a failed `validate_props` call raises `ValidationFailedError` this same way):
 
 ```python
-    async def get_user(self, user_id: str):
-        user = await self.user_service.find(user_id)
+    async def get_user(self, props: dict):
+        payload = validate_props(GetUserProps, props)
+        user = await self.user_service.find(payload.user_id)
         if user is None:
-            raise NotFoundError(f"User {user_id} not found")
+            raise NotFoundError(f"User {payload.user_id} not found")
         return user
 ```
 
 ### 2. Call it directly — no gateway, no `handle()`
 
 ```python
-response = await UserController(user_service).get_user("123")
+response = await UserController(db_session_factory).get_user({"user_id": "123"})
 # -> SuccessResponse(data=<User>) or ErrorResponse(error=...)
 # Never a raw exception, no matter what the controller or service raised.
 ```
 
 ### 3. Use it from FastAPI
 
+The route never builds a payload object — it merges the request into a
+`props` dict and calls the controller with nothing else. Reading the
+controller method (above) is what tells you what the request needs, not
+the route:
+
 ```python
-from fastapi import APIRouter
-from atlasboxpy_controller.fastapi_integration import to_json_response
+from fastapi import APIRouter, Request
+from atlasboxpy_controller.fastapi_integration import extract_api_request, format_json_response
 
 router = APIRouter()
-controller = UserController(user_service)
+controller = UserController(db_session_factory)
 
 @router.get("/users/{user_id}")
-async def get_user(user_id: str):
-    result = await controller.get_user(user_id)
-    return to_json_response(result)
+async def get_user(request: Request):
+    return await format_json_response(controller.get_user(await extract_api_request(request)))
 ```
 
-A request for a missing user automatically comes back as an HTTP `404` with a formatted `ErrorResponse` body — no `try/except` in the route, no manual `HTTPException`.
+A request for a missing user automatically comes back as an HTTP `404` with a formatted `ErrorResponse` body — no `try/except` in the route, no manual `HTTPException`, no Pydantic model imported into the route file at all.
 
 ### 4. Use it from a worker, agent, or gRPC servicer — same controller, no REST involved
 
 ```python
-from atlasboxpy_controller import status_for_code
+from atlasboxpy_controller import ErrorResponse, status_for_code
 
-result = await UserController(user_service).get_user(request.user_id)
+result = await UserController(db_session_factory).get_user({"user_id": request.user_id})
 
-if result.status == "error":
+if isinstance(result, ErrorResponse):
+    # result.status ("not-found", "timeout", "exception", ...) and
+    # result.response_code (100-999) are already on the envelope — an
+    # agent or worker reads them directly, no HTTP round trip needed.
     context.set_code(status_for_code(result.error.code).grpc_status)
 ```
 
-The core package has no dependency on FastAPI or any other framework, so this works the same way regardless of what's calling it.
+The core package has no dependency on FastAPI or any other framework, so this works the same way regardless of what's calling it — and `{"user_id": request.user_id}` is exactly the same shape of `props` dict the REST route above builds, just assembled by hand instead of by `extract_api_request`.
 
 ---
 

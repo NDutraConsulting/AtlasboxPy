@@ -1,8 +1,15 @@
-"""KanbanController wraps KanbanService, which owns the whole board/
-column/card aggregate. With one service instead of two, the controller no
-longer has to assemble cross-service responses or enforce cross-service
-rules — that logic lives in KanbanService now, because Board/Column/Card
-were never really independent (see kanban_service.py's docstring).
+"""KanbanController owns and constructs its KanbanService internally —
+callers hand it a session_factory, not a service instance. A service is an
+implementation detail of how this controller gets its work done, not a
+collaborator the outside world should be wiring together and handing in;
+nothing outside this class should know KanbanService exists, let alone
+construct one and pass it across the controller boundary.
+
+KanbanService itself owns the whole board/column/card aggregate — one
+service instead of two, so the controller doesn't have to assemble
+cross-service responses or enforce cross-service rules; that logic lives
+in KanbanService now, because Board/Column/Card were never really
+independent (see kanban_service.py's docstring).
 
 What's still the controller's job, and always will be regardless of how
 many services back it:
@@ -31,9 +38,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from atlasboxpy_controller import BaseController, ErrorResponse, SuccessResponse, build_error_response
-from atlasboxpy_controller import ConflictError, DomainError, NotFoundError, UnprocessableError, UpstreamServiceError, ValidationFailedError
+from atlasboxpy_controller import BaseController, ErrorResponse, ResponseStatus, SuccessResponse, build_error_response, validate_props
+from atlasboxpy_controller import ConflictError, DomainError, NotFoundError, TimedOutError, UnprocessableError, UpstreamServiceError, ValidationFailedError
 
+from ..db import SessionFactory
+from ..models import (
+    BoardIdProps,
+    CardIdProps,
+    CreateBoardRequest,
+    CreateCardRequest,
+    CreateColumnRequest,
+    DeleteColumnProps,
+    MoveCardRequest,
+    UpdateCardRequest,
+)
 from ..services import KanbanService, ServiceResult, ServiceStatus
 from ..services.kanban_service import MAX_TITLE_LENGTH
 
@@ -46,30 +64,42 @@ _ERROR_CODE_TO_DOMAIN: dict[str, type[DomainError]] = {
 
 
 class KanbanController(BaseController):
-    def __init__(self, service: KanbanService) -> None:
+    def __init__(self, session_factory: SessionFactory) -> None:
         super().__init__()
-        self.service = service
+        self.service = KanbanService(session_factory)
+
+    # Every method below takes exactly one argument: `props`, a plain dict
+    # merging the request's path params and (where relevant) its body —
+    # see main.py's `_call`, backed by atlasboxpy_controller's
+    # extract_api_request. The route never builds a payload object; each
+    # method validates its own `props` via `validate_props`, against the
+    # matching model in models.py. That model IS the request contract —
+    # read it next to the method and there's nothing left to guess about
+    # what a call needs.
 
     # --- boards ---
 
-    async def create_board(self, payload: Any) -> SuccessResponse[Any] | ErrorResponse:
+    async def create_board(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(CreateBoardRequest, props)
         response = self._response_for(await self.service.create_board(payload.name))
         if isinstance(response, ErrorResponse) and response.error.code == "validation_failed":
             response.error.message += " (hint: every board starts with 3 default columns)"
         return response
 
-    async def list_boards(self) -> SuccessResponse[Any] | ErrorResponse:
+    async def list_boards(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        # No path/query/body input — nothing to validate.
         return self._response_for(await self.service.list_boards())
 
-    async def get_board(self, board_id: str) -> SuccessResponse[Any] | ErrorResponse:
+    async def get_board(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(BoardIdProps, props)
         # A degraded, clearly-marked response in place of reporting the
         # outage — but only for a read; there's nothing sensible to
         # "degrade" a write to, so create/update/delete just report it.
-        response = self._response_for(await self.service.get_board(board_id))
+        response = self._response_for(await self.service.get_board(payload.board_id))
         if isinstance(response, ErrorResponse) and response.error.code == "upstream_error":
             return SuccessResponse(
                 data={
-                    "id": board_id,
+                    "id": payload.board_id,
                     "name": "(unavailable — degraded response)",
                     "columns": [],
                     "degraded": True,
@@ -77,41 +107,56 @@ class KanbanController(BaseController):
             )
         return response
 
-    async def delete_board(self, board_id: str) -> SuccessResponse[Any] | ErrorResponse:
-        return self._response_for(await self.service.delete_board(board_id))
+    async def delete_board(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(BoardIdProps, props)
+        return self._response_for(await self.service.delete_board(payload.board_id))
 
-    async def add_column(self, board_id: str, payload: Any) -> SuccessResponse[Any] | ErrorResponse:
-        response = self._response_for(await self.service.add_column(board_id, payload.name))
+    async def add_column(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(CreateColumnRequest, props)
+        response = self._response_for(await self.service.add_column(payload.board_id, payload.name))
         if isinstance(response, ErrorResponse) and response.error.code == "validation_failed":
             response.error.message += " (hint: column names must be unique per board)"
         return response
 
-    async def delete_column(
-        self, board_id: str, column_id: str
-    ) -> SuccessResponse[Any] | ErrorResponse:
-        return self._response_for(await self.service.delete_column(board_id, column_id))
+    async def delete_column(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(DeleteColumnProps, props)
+        return self._response_for(
+            await self.service.delete_column(payload.board_id, payload.column_id)
+        )
 
     # --- cards ---
 
-    async def create_card(self, board_id: str, payload: Any) -> SuccessResponse[Any] | ErrorResponse:
+    async def create_card(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(CreateCardRequest, props)
         response = self._response_for(
             await self.service.create_card(
-                board_id, payload.column_id, payload.title, payload.description
+                payload.board_id, payload.column_id, payload.title, payload.description
             )
         )
         return self._with_card_title_hint(response)
 
-    async def update_card(self, card_id: str, payload: Any) -> SuccessResponse[Any] | ErrorResponse:
+    async def update_card(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(UpdateCardRequest, props)
         response = self._response_for(
-            await self.service.update_card(card_id, payload.title, payload.description)
+            await self.service.update_card(payload.card_id, payload.title, payload.description)
         )
         return self._with_card_title_hint(response)
 
-    async def move_card(self, card_id: str, payload: Any) -> SuccessResponse[Any] | ErrorResponse:
-        return self._response_for(await self.service.move_card(card_id, payload.column_id))
+    async def move_card(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(MoveCardRequest, props)
+        response = self._response_for(await self.service.move_card(payload.card_id, payload.column_id))
+        if isinstance(response, SuccessResponse):
+            # A move is exactly the kind of write an agent or a downstream
+            # webhook cares about as an event ("this card moved"), not just
+            # a data blob — mark it that way so a caller (REST or agent, no
+            # HTTP round trip needed for the latter) can tell the two apart
+            # from status/response_code alone, without inspecting the body.
+            return SuccessResponse(status=ResponseStatus.EVENT_FIRED, response_code=202, data=response.data)
+        return response
 
-    async def delete_card(self, card_id: str) -> SuccessResponse[Any] | ErrorResponse:
-        return self._response_for(await self.service.delete_card(card_id))
+    async def delete_card(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
+        payload = validate_props(CardIdProps, props)
+        return self._response_for(await self.service.delete_card(payload.card_id))
 
     # --- translation ---
 
@@ -127,6 +172,6 @@ class KanbanController(BaseController):
         if result.status == ServiceStatus.SUCCESS:
             return SuccessResponse(data=result.result.data if result.result is not None else None)
         if result.status == ServiceStatus.TIMEOUT:
-            return build_error_response(UpstreamServiceError(result.msg))
+            return build_error_response(TimedOutError(result.msg))
         error_cls = _ERROR_CODE_TO_DOMAIN.get(result.error_code, UnprocessableError)
         return build_error_response(error_cls(result.msg))

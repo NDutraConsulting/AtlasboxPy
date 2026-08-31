@@ -1,14 +1,15 @@
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
-from atlasboxpy_controller.exceptions import DomainError
+from atlasboxpy_controller.exceptions import DomainError, ResponseStatus, resolve_status
 
 T = TypeVar("T")
 
 
 class SuccessResponse(BaseModel, Generic[T]):
-    status: Literal["success"] = "success"
+    status: ResponseStatus = ResponseStatus.SUCCESS
+    response_code: int = 200
     data: T
 
 
@@ -19,11 +20,15 @@ class ErrorDetail(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    status: Literal["error"] = "error"
+    status: ResponseStatus = ResponseStatus.ERROR
+    response_code: int = 500
     error: ErrorDetail
 
 
 def build_error_response(exc: DomainError) -> ErrorResponse:
+    mapping = resolve_status(exc)
     return ErrorResponse(
-        error=ErrorDetail(code=exc.code, message=exc.message, details=exc.details)
+        status=mapping.response_status,
+        response_code=mapping.response_code,
+        error=ErrorDetail(code=exc.code, message=exc.message, details=exc.details),
     )

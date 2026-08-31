@@ -49,7 +49,7 @@ def test_generated_controller_imports_and_runs(tmp_path, monkeypatch):
             "    ok = await controller.get_example('1')\n"
             "    assert ok.status == 'success', ok\n"
             "    err = await controller.get_example('2')\n"
-            "    assert err.status == 'error', err\n"
+            "    assert err.status == 'not-found', err\n"
             "    assert err.error.code == 'not_found', err\n"
             "asyncio.run(main())\n",
         ],
@@ -121,7 +121,7 @@ def test_add_feature_generated_controller_imports_and_runs(tmp_path, monkeypatch
             "    ok = await controller.get_invoice('1')\n"
             "    assert ok.status == 'success', ok\n"
             "    err = await controller.get_invoice('2')\n"
-            "    assert err.status == 'error', err\n"
+            "    assert err.status == 'not-found', err\n"
             "    assert err.error.code == 'not_found', err\n"
             "asyncio.run(main())\n",
         ],

@@ -121,7 +121,8 @@ def test_full_card_lifecycle_create_update_move_delete(client):
     assert updated.json()["data"]["description"] == "Draft v1"  # untouched
 
     moved = client.post(f"/api/cards/{card['id']}/move", json={"column_id": doing_id})
-    assert moved.status_code == 200
+    assert moved.status_code == 202  # event-fired: a move is a domain event, not just a data read
+    assert moved.json()["status"] == "event-fired"
     assert moved.json()["data"]["column_id"] == doing_id
 
     deleted = client.delete(f"/api/cards/{card['id']}")
@@ -213,7 +214,7 @@ def test_traffic_is_logged_with_source_method_and_status(client):
     assert '"caller_type": "api_route"' in create_line
     assert "method=create_board" in create_line
     assert "status=success" in create_line
-    assert 'request=[{"name": "Logged board"}]' in create_line
+    assert 'request={"name": "Logged board"}' in create_line
     assert '"status": "success"' in create_line
 
     not_found_line = next(line for line in reversed(lines) if "does-not-exist" in line)
@@ -221,7 +222,7 @@ def test_traffic_is_logged_with_source_method_and_status(client):
     assert '"method": "GET"' in not_found_line
     assert "method=get_board" in not_found_line
     assert "status=not_found" in not_found_line  # the DomainError's own code, not just "error"
-    assert '"status": "error"' in not_found_line
+    assert '"status": "not-found"' in not_found_line
     assert '"code": "not_found"' in not_found_line
 
 
@@ -280,11 +281,18 @@ def test_simulate_db_error_toggle_causes_upstream_error_then_recovers(client):
     assert recovered.status_code == 200
 
 
-def test_simulate_db_timeout_also_maps_to_upstream_error(client):
+def test_simulate_db_timeout_maps_to_its_own_timeout_status(client):
+    # A timeout is not the same failure as a generic upstream/DB error — it
+    # gets its own DomainError (TimedOutError) and its own status/response_code
+    # (504/"timeout"), distinct from the 502/"api-error" case above, so a
+    # caller (REST or an agent reading the envelope directly) can tell "the
+    # backend is broken" apart from "the backend is just slow" without
+    # string-matching the error message.
     client.post("/api/debug/db-connection", json={"enabled": True, "mode": "timeout"})
     resp = client.post("/api/boards", json={"name": "x"})
-    assert resp.status_code == 502
-    assert resp.json()["error"]["code"] == "upstream_error"
+    assert resp.status_code == 504
+    assert resp.json()["status"] == "timeout"
+    assert resp.json()["error"]["code"] == "timeout"
     client.post("/api/debug/db-connection", json={"enabled": False})
 
 

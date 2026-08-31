@@ -12,7 +12,9 @@ A call enters through whatever transport is in front of it — an HTTP route, a
 queue worker picking up a job, an agent's tool-calling loop, or a gRPC
 servicer method. Every one of those callers does the same two things:
 
-1. `await controller.some_method(*args, **kwargs)`
+1. `await controller.some_method(props)` — one dict argument, validated
+   inside the method itself (see `validate_props` in
+   [`extending.md`](extending.md)), not a payload object the caller built
 2. Do something transport-specific with the returned `SuccessResponse` or
    `ErrorResponse` — turn it into a `JSONResponse` (FastAPI), set a gRPC
    status code, log it and move to the next queue item, or hand it back to an
@@ -24,7 +26,7 @@ subclass's public async methods already return that response, because
 class-definition time:
 
 ```
-method(self, *args, **kwargs)
+method(self, props)
   -> already returns a SuccessResponse/ErrorResponse?
        -> passed through unchanged (the preferred style: the method built
           it directly, translating whatever its service returned)
@@ -46,15 +48,25 @@ method(self, *args, **kwargs)
 And the reverse path for exceptions:
 
 ```
-DomainError.code  --(resolve_status / status_for_code)-->  StatusMapping(http_status, grpc_status)
+DomainError.code  --(resolve_status / status_for_code)-->
+    StatusMapping(http_status, grpc_status, response_code, response_status)
                                                                     |
-                                          FastAPI: to_json_response maps http_status
-                                          gRPC:    context.set_code(mapping.grpc_status)
+        build_error_response() copies response_code/response_status onto
+        the ErrorResponse envelope itself — every caller gets those two
+        fields for free, no transport lookup required:
+                                                                    |
+              FastAPI: to_json_response(result) uses result.response_code
+                        directly as the HTTP status — one number, not a
+                        separate REST-only table to keep in sync with it
+              gRPC:    context.set_code(mapping.grpc_status)
+              Agent/worker: reads result.status / result.response_code
+                        straight off the object it already has — no HTTP
+                        handshake, no separate schema to learn
 ```
 
 Neither transport adapter needs to know anything about *why* a `NotFoundError`
-maps to 404/`NOT_FOUND` — that's decided once, in `exceptions.py`, and every
-caller gets it for free.
+maps to 404/`NOT_FOUND`/`"not-found"` — that's decided once, in
+`exceptions.py`, and every caller gets it for free.
 
 ## Why BaseController wraps method calls structurally
 
@@ -92,19 +104,23 @@ library, a worker script and a gRPC servicer use the exact same one line:
 **Worker:**
 
 ```python
-result = await UserController(user_service).get_user("123")
+result = await UserController(db_session_factory).get_user({"user_id": "123"})
 ```
 
 **gRPC servicer method** (equivalent shape, no adapter package required):
 
 ```python
-from atlasboxpy_controller import status_for_code
+from atlasboxpy_controller import ErrorResponse, status_for_code
 
-result = await UserController(user_service).get_user(request.user_id)
+result = await UserController(db_session_factory).get_user({"user_id": request.user_id})
 
-if result.status == "error":
+if isinstance(result, ErrorResponse):
     context.set_code(status_for_code(result.error.code).grpc_status)
 ```
+
+Both build the same `props` dict FastAPI's `extract_api_request` would
+have built for them — assembled by hand here since there's no HTTP
+request to extract it from.
 
 Same controller, same method call, same response shape. The only thing that
 differs between a REST route, a worker, and a gRPC servicer is what each one

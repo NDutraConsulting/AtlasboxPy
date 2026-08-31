@@ -6,7 +6,12 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from atlasboxpy_controller.exceptions import DomainError, resolve_status
+from atlasboxpy_controller.exceptions import (
+    DomainError,
+    OutOfMemoryError,
+    StackOverflowError,
+    resolve_status,
+)
 from atlasboxpy_controller.responses import (
     ErrorResponse,
     SuccessResponse,
@@ -23,6 +28,14 @@ def _wrap(
             result = await func(self, *args, **kwargs)
         except DomainError as exc:
             return _log_and_format(self, exc)
+        except RecursionError as exc:
+            hide = getattr(self, "hide_internal_errors", True)
+            message = StackOverflowError.default_message if hide else str(exc)
+            return _log_and_format(self, StackOverflowError(message=message, cause=exc))
+        except MemoryError as exc:
+            hide = getattr(self, "hide_internal_errors", True)
+            message = OutOfMemoryError.default_message if hide else str(exc)
+            return _log_and_format(self, OutOfMemoryError(message=message, cause=exc))
         except Exception as exc:  # noqa: BLE001 - the safety net for whatever a service missed
             hide = getattr(self, "hide_internal_errors", True)
             message = "An unexpected error occurred." if hide else str(exc)

@@ -5,18 +5,27 @@ CSS and a {feature}-controller.js that orchestrates {feature}-api.js +
 
 Backend layering:
 
-    api-route > validation > controller (decides what a failure means) >
-        [services > [libraries, apis, repositories, models]]
+    api-route > controller (validates its own props, decides what a
+        failure means) > [services > [libraries, apis, repositories, models]]
 
-Each api_route below validates its body (validation.py) before touching
-anything else, then calls a KanbanController method directly through
-`_call()` — a thin helper that logs the request/response to the traffic
-log and converts the result to a JSONResponse. KanbanController subclasses
-BaseController, which wraps every public async method in a try/except at
-class-definition time: the controller method itself builds a
-SuccessResponse/ErrorResponse directly (see controllers/kanban_controller.py),
-and BaseController's wrapper is just the safety net underneath that for
-whatever KanbanService didn't already translate. There's no gateway object
+Each api_route below is a one-liner: `_call(request, controller.method)`.
+`_call` merges the request into a plain `props` dict (via
+atlasboxpy_controller's `extract_api_request` — path params, query params,
+and the JSON body, path params winning on a collision), passes that
+straight to the controller method with no payload object built in the
+route, logs the request/response to the traffic log, and converts the
+result to a JSONResponse. The controller method is the one place that
+validates `props` (via `validate_props`, against the matching model in
+models.py) — a route file that never mentions a Pydantic model at all is
+the point: read the controller method and its model, not the route, to
+know what a call needs.
+
+KanbanController subclasses BaseController, which wraps every public async
+method in a try/except at class-definition time: the controller method
+itself builds a SuccessResponse/ErrorResponse directly (see
+controllers/kanban_controller.py), and BaseController's wrapper is just the
+safety net underneath that for whatever KanbanService (or a failed
+validate_props call) didn't already translate. There's no gateway object
 anywhere in this file.
 
 Run it with:
@@ -34,60 +43,46 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
-from atlasboxpy_controller import DomainError, ErrorResponse, SuccessResponse, ValidationFailedError
-from atlasboxpy_controller.fastapi_integration import to_json_response
+from atlasboxpy_controller import ErrorResponse, SuccessResponse, ValidationFailedError
+from atlasboxpy_controller.fastapi_integration import extract_api_request, to_json_response
 from atlasboxpy_controller.responses import build_error_response
 
 from .controllers import KanbanController
 from .db import DEFAULT_DB_PATH, SessionFactory, init_db, make_engine, make_session_factory
 from .logging_setup import configure_traffic_logging
-from .models import (
-    CreateBoardRequest,
-    CreateCardRequest,
-    CreateColumnRequest,
-    MoveCardRequest,
-    SimulateDbErrorRequest,
-    UpdateCardRequest,
-)
-from .services import KanbanService
+from .models import SimulateDbErrorRequest
 from .db_simulation import set_simulation
 from .validation import validate_body
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _traffic_log = logging.getLogger("atlasboxpy_controller.traffic")
 
-
-def _to_jsonable(value: Any) -> Any:
-    """Pydantic request models become their JSON body; anything else
-    (path params like an id string) passes through as-is."""
-    if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
-    return value
+_ControllerMethod = Callable[[dict[str, Any]], Coroutine[Any, Any, "SuccessResponse[Any] | ErrorResponse"]]
 
 
-def _error_response(exc: DomainError) -> JSONResponse:
+def _error_response(exc: ValidationFailedError) -> JSONResponse:
     return to_json_response(build_error_response(exc))
 
 
-async def _call(request: Request, method: Any, *args: Any) -> JSONResponse:
-    """Calls a KanbanController method, logs the request/response to the
-    traffic log, and converts the result to a JSONResponse. Every request
-    that reaches a controller passes through here — the one place logging
-    lives, instead of every route repeating it."""
-    result: SuccessResponse[Any] | ErrorResponse = await method(*args)
+async def _call(request: Request, method: _ControllerMethod) -> JSONResponse:
+    """Extracts `props` from the request, calls a KanbanController method
+    with it, logs the request/response to the traffic log, and converts
+    the result to a JSONResponse. Every request that reaches a controller
+    passes through here — the one place prop-extraction and logging live,
+    instead of every route repeating them."""
+    props = await extract_api_request(request)
+    result: SuccessResponse[Any] | ErrorResponse = await method(props)
     status = "success" if isinstance(result, SuccessResponse) else result.error.code
-    request_payload = [_to_jsonable(a) for a in args]
     _traffic_log.info(
         "source=%s method=%s status=%s request=%s response=%s",
         json.dumps(
@@ -95,7 +90,7 @@ async def _call(request: Request, method: Any, *args: Any) -> JSONResponse:
         ),
         method.__name__,
         status,
-        json.dumps(request_payload),
+        json.dumps(props),
         json.dumps(result.model_dump(mode="json")),
     )
     return to_json_response(result)
@@ -111,71 +106,42 @@ def create_app(session_factory: SessionFactory | None = None) -> Starlette:
         engine = make_engine(f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
         session_factory = make_session_factory(engine)
 
-    service = KanbanService(session_factory)
-    controller = KanbanController(service)
+    controller = KanbanController(session_factory)
+
+    # Every route below is exactly this: extract props from the request,
+    # hand them to a controller method, format the result. No payload
+    # object is built here — the controller method validates its own props
+    # (see controllers/kanban_controller.py and models.py).
 
     async def create_board(request: Request) -> JSONResponse:
-        try:
-            payload = await validate_body(request, CreateBoardRequest)
-        except ValidationFailedError as exc:
-            return _error_response(exc)
-        return await _call(request, controller.create_board, payload)
+        return await _call(request, controller.create_board)
 
     async def list_boards(request: Request) -> JSONResponse:
         return await _call(request, controller.list_boards)
 
     async def get_board(request: Request) -> JSONResponse:
-        return await _call(request, controller.get_board, request.path_params["board_id"])
+        return await _call(request, controller.get_board)
 
     async def delete_board(request: Request) -> JSONResponse:
-        return await _call(request, controller.delete_board, request.path_params["board_id"])
+        return await _call(request, controller.delete_board)
 
     async def add_column(request: Request) -> JSONResponse:
-        try:
-            payload = await validate_body(request, CreateColumnRequest)
-        except ValidationFailedError as exc:
-            return _error_response(exc)
-        return await _call(
-            request, controller.add_column, request.path_params["board_id"], payload
-        )
+        return await _call(request, controller.add_column)
 
     async def delete_column(request: Request) -> JSONResponse:
-        return await _call(
-            request,
-            controller.delete_column,
-            request.path_params["board_id"],
-            request.path_params["column_id"],
-        )
+        return await _call(request, controller.delete_column)
 
     async def create_card(request: Request) -> JSONResponse:
-        try:
-            payload = await validate_body(request, CreateCardRequest)
-        except ValidationFailedError as exc:
-            return _error_response(exc)
-        return await _call(
-            request, controller.create_card, request.path_params["board_id"], payload
-        )
+        return await _call(request, controller.create_card)
 
     async def update_card(request: Request) -> JSONResponse:
-        try:
-            payload = await validate_body(request, UpdateCardRequest)
-        except ValidationFailedError as exc:
-            return _error_response(exc)
-        return await _call(
-            request, controller.update_card, request.path_params["card_id"], payload
-        )
+        return await _call(request, controller.update_card)
 
     async def move_card(request: Request) -> JSONResponse:
-        try:
-            payload = await validate_body(request, MoveCardRequest)
-        except ValidationFailedError as exc:
-            return _error_response(exc)
-        return await _call(
-            request, controller.move_card, request.path_params["card_id"], payload
-        )
+        return await _call(request, controller.move_card)
 
     async def delete_card(request: Request) -> JSONResponse:
-        return await _call(request, controller.delete_card, request.path_params["card_id"])
+        return await _call(request, controller.delete_card)
 
     async def set_db_connection_simulation(request: Request) -> JSONResponse:
         """Test-only utility — deliberately NOT routed through the

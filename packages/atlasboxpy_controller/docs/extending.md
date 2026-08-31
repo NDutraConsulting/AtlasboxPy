@@ -13,12 +13,21 @@ class QuotaExceededError(DomainError):
     default_message = "Account quota exceeded."
     retryable = False  # retrying without upgrading the plan can't succeed
 
-register_status_mapping(QuotaExceededError, http_status=402, grpc_status="RESOURCE_EXHAUSTED")
+register_status_mapping(
+    QuotaExceededError,
+    http_status=402,
+    grpc_status="RESOURCE_EXHAUSTED",
+    response_code=402,               # optional — defaults to http_status
+    response_status=ResponseStatus.ERROR,  # optional — defaults to ERROR
+)
 ```
 
 `register_status_mapping` is the only supported way to give a custom exception
-its own HTTP/gRPC status — there's no dict to edit inside the package. Once
-registered:
+its own HTTP/gRPC status — there's no dict to edit inside the package.
+`response_code`/`response_status` are the values that land on the
+`ErrorResponse` envelope itself (`response_code` must be in `[100, 999]`);
+they're keyword-only and optional so an existing 3-arg call site keeps
+working unchanged. Once registered:
 
 - `resolve_status(QuotaExceededError())` and `status_for_code("quota_exceeded")`
   both return the mapping you registered.
@@ -29,6 +38,84 @@ the mapping your exception inherits via its parent class — `resolve_status`
 walks the MRO, so a subclass with no explicit entry falls back to its nearest
 mapped ancestor (this is exactly how `AlreadyExistsError` gets `ConflictError`'s
 409/`ALREADY_EXISTS` mapping without its own entry).
+
+## Validating request props inside the controller
+
+A controller method takes one argument, `props` — a plain `dict[str, Any]`
+— and validates it for itself, via `validate_props`, against a Pydantic
+model that IS the method's contract:
+
+```python
+from pydantic import BaseModel
+from atlasboxpy_controller import ValidationFailedError, validate_props
+
+class CreateUserProps(BaseModel):
+    name: str
+    email: str
+
+class UserController(BaseController):
+    async def create_user(self, props: dict) -> SuccessResponse | ErrorResponse:
+        payload = validate_props(CreateUserProps, props)
+        ...
+```
+
+`validate_props` raises `ValidationFailedError` (not pydantic's own
+`ValidationError`) on a shape mismatch — `BaseController`'s existing
+`DomainError` handling formats that into a response the same way it
+formats any other raised `DomainError`, so the method needs no
+`try/except` of its own.
+
+This is deliberately *not* validation done by the route before the
+controller is ever called: reading a controller method next to its model
+tells you exactly what a call needs. A route file that only ever extracts
+and forwards `props` has no opinion on shape at all — see
+[`fastapi_integration.extract_api_request`](#calling-it-from-fastapi-with-no-payload-object-in-the-route)
+below.
+
+`validate_props` has no transport dependency — a worker or an agent
+building the same `props` dict by hand gets identical validation, with no
+FastAPI/Starlette involved at all.
+
+### Calling it from FastAPI with no payload object in the route
+
+`extract_api_request(request)` merges a request's query params, JSON
+body, and path params into one flat `props` dict (path params win on a
+name collision); `format_json_response(coro)` awaits a controller call and
+converts the result straight into a `JSONResponse`:
+
+```python
+from fastapi import APIRouter, Request
+from atlasboxpy_controller.fastapi_integration import extract_api_request, format_json_response
+
+router = APIRouter()
+
+@router.post("/users")
+async def create_user(request: Request):
+    return await format_json_response(controller.create_user(await extract_api_request(request)))
+```
+
+The route never imports `CreateUserProps` (or any Pydantic model at all) —
+there's nothing left in the route to keep in sync with the controller's
+contract.
+
+### A controller owns its services, not the other way around
+
+A controller's constructor takes whatever a service needs to be built (a
+session factory, a client, config) — not a pre-built service instance.
+Nothing outside the controller should construct a service and hand it
+across that boundary:
+
+```python
+class UserController(BaseController):
+    def __init__(self, db_session_factory):
+        super().__init__()
+        self.user_service = UserService(db_session_factory)  # constructed here
+```
+
+Testability doesn't suffer for this — a test still injects whatever the
+service itself needs (a fake session factory, an in-memory driver), one
+level further down than before; it just never constructs the service
+directly.
 
 ## How `BaseController` formats responses
 
@@ -61,10 +148,11 @@ convenience escape hatch:
 
 ```python
 class UserController(BaseController):
-    async def get_user(self, user_id: str):
-        user = await self.user_service.find(user_id)
+    async def get_user(self, props: dict):
+        payload = validate_props(GetUserProps, props)
+        user = await self.user_service.find(payload.user_id)
         if user is None:
-            raise NotFoundError(f"User {user_id} not found")
+            raise NotFoundError(f"User {payload.user_id} not found")
         return user
 ```
 
@@ -73,11 +161,12 @@ real service-layer outcomes to translate — an expected business outcome
 like "not found" is data, not something to raise and unwind the stack for:
 
 ```python
-from atlasboxpy_controller import ErrorResponse, SuccessResponse, build_error_response
+from atlasboxpy_controller import ErrorResponse, SuccessResponse, build_error_response, validate_props
 
 class UserController(BaseController):
-    async def get_user(self, user_id: str) -> SuccessResponse | ErrorResponse:
-        result = await self.user_service.find(user_id)  # a ServiceResult, say
+    async def get_user(self, props: dict) -> SuccessResponse | ErrorResponse:
+        payload = validate_props(GetUserProps, props)
+        result = await self.user_service.find(payload.user_id)  # a ServiceResult, say
         if result.status != ServiceStatus.SUCCESS:
             return build_error_response(NotFoundError(result.msg))
         return SuccessResponse(data=result.data)
@@ -91,7 +180,8 @@ degraded fallback returned in place of an error — since the response is
 just a value the method can inspect and modify before returning:
 
 ```python
-async def create_board(self, payload) -> SuccessResponse | ErrorResponse:
+async def create_board(self, props: dict) -> SuccessResponse | ErrorResponse:
+    payload = validate_props(CreateBoardRequest, props)
     response = self._response_for(await self.service.create_board(payload.name))
     if isinstance(response, ErrorResponse) and response.error.code == "validation_failed":
         response.error.message += " (hint: every board starts with 3 default columns)"

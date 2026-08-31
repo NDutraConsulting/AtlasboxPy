@@ -5,7 +5,11 @@ from atlasboxpy_controller.exceptions import (
     ConflictError,
     DomainError,
     NotFoundError,
+    OutOfMemoryError,
     PermissionDeniedError,
+    ResponseStatus,
+    StackOverflowError,
+    TimedOutError,
     UnauthenticatedError,
     UnprocessableError,
     UpstreamServiceError,
@@ -116,6 +120,53 @@ def test_register_status_mapping_and_known_codes():
     mapping = resolve_status(CustomError())
     assert mapping.http_status == 418
     assert "custom_error" in known_codes()
+    # response_code/response_status are optional — defaults keep the old
+    # 2-arg call site above working: response_code falls back to http_status,
+    # response_status falls back to the generic ERROR bucket.
+    assert mapping.response_code == 418
+    assert mapping.response_status == ResponseStatus.ERROR
+
+
+def test_register_status_mapping_with_explicit_response_code_and_status():
+    class QuotaExceededError(DomainError):
+        code = "quota_exceeded"
+        default_message = "Quota exceeded."
+
+    register_status_mapping(
+        QuotaExceededError, 429, "RESOURCE_EXHAUSTED",
+        response_code=629, response_status=ResponseStatus.ERROR,
+    )
+    mapping = resolve_status(QuotaExceededError())
+    assert mapping.response_code == 629
+    assert mapping.response_status == ResponseStatus.ERROR
+
+
+def test_status_mapping_rejects_response_code_outside_100_999():
+    with pytest.raises(ValueError, match=r"\[100, 999\]"):
+        register_status_mapping(DomainError, 500, "UNKNOWN", response_code=42)
+
+
+@pytest.mark.parametrize(
+    "exc_type, expected_response_status",
+    [
+        (TimedOutError, ResponseStatus.TIMEOUT),
+        (NotFoundError, ResponseStatus.NOT_FOUND),
+        (UpstreamServiceError, ResponseStatus.API_ERROR),
+        (OutOfMemoryError, ResponseStatus.OUT_OF_MEMORY),
+        (StackOverflowError, ResponseStatus.STACK_OVERFLOW),
+    ],
+)
+def test_new_domain_errors_map_to_their_response_status(exc_type, expected_response_status):
+    err = exc_type()
+    assert isinstance(err, DomainError)
+    mapping = resolve_status(err)
+    assert mapping.response_status == expected_response_status
+    assert 100 <= mapping.response_code <= 999
+
+
+def test_out_of_memory_and_stack_overflow_are_not_retryable():
+    assert OutOfMemoryError.retryable is False
+    assert StackOverflowError.retryable is False
 
 
 def test_is_retryable_unknown_code_raises_key_error():

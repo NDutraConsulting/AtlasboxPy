@@ -13,41 +13,53 @@ gRPC servicer — the core has no FastAPI dependency at all.)
 
 Subclass `BaseController`. Its public async methods are wrapped automatically
 at class-definition time, so calling one always returns a `SuccessResponse`
-or `ErrorResponse` — never a raw exception.
+or `ErrorResponse` — never a raw exception. A controller owns and
+constructs its own service — it's given whatever the service needs to be
+built, not a pre-built service instance — and each method takes a single
+`props` dict, which it validates for itself via `validate_props`:
 
 ```python
-from atlasboxpy_controller import BaseController, NotFoundError
+from pydantic import BaseModel
+from atlasboxpy_controller import BaseController, NotFoundError, validate_props
+
+class GetUserProps(BaseModel):
+    user_id: str
 
 class UserController(BaseController):
-    def __init__(self, user_service):
+    def __init__(self, db_session_factory):
         super().__init__()
-        self.user_service = user_service
+        self.user_service = UserService(db_session_factory)
 
-    async def get_user(self, user_id: str):
-        user = await self.user_service.find(user_id)
+    async def get_user(self, props: dict):
+        payload = validate_props(GetUserProps, props)
+        user = await self.user_service.find(payload.user_id)
         if user is None:
-            raise NotFoundError(f"User {user_id} not found")
+            raise NotFoundError(f"User {payload.user_id} not found")
         return user
 ```
 
-Raising a `DomainError` (as above) is a convenience escape hatch. The
+Raising a `DomainError` (as above) is a convenience escape hatch — a failed
+`validate_props` call raises `ValidationFailedError` this same way. The
 preferred style once a method has a real service backing it is to build the
 response directly — see [`extending.md`](extending.md).
 
 ## 2. Wrap it in a FastAPI route
 
+The route extracts `props` from the request and calls the controller —
+nothing else. It never builds a payload object or imports `GetUserProps`;
+the controller method above is the only place that shape is declared.
+
 ```python
-from fastapi import APIRouter, FastAPI
-from atlasboxpy_controller.fastapi_integration import to_json_response
+from fastapi import APIRouter, FastAPI, Request
+from atlasboxpy_controller.fastapi_integration import extract_api_request, format_json_response
 
 app = FastAPI()
 router = APIRouter()
-controller = UserController(user_service)
+controller = UserController(db_session_factory)
 
 @router.get("/users/{user_id}")
-async def get_user(user_id: str):
-    result = await controller.get_user(user_id)
-    return to_json_response(result)
+async def get_user(request: Request):
+    return await format_json_response(controller.get_user(await extract_api_request(request)))
 
 app.include_router(router)
 ```
@@ -68,19 +80,22 @@ curl -i localhost:8000/users/does-not-exist
 HTTP/1.1 404 Not Found
 content-type: application/json
 
-{"status":"error","error":{"code":"not_found","message":"User does-not-exist not found","details":{}}}
+{"status":"not-found","response_code":404,"error":{"code":"not_found","message":"User does-not-exist not found","details":{}}}
 ```
 
 No `try/except` in the route, no manual `HTTPException` — `BaseController`
-caught the `NotFoundError`, formatted it, and `to_json_response` mapped it to
-the correct HTTP status via `DomainError`'s built-in status table.
+caught the `NotFoundError`, formatted it, and `to_json_response` used
+`response_code` (set from `DomainError`'s built-in status table) directly
+as the HTTP status. `status`/`response_code` are the same two fields an
+agent or worker reads in-process, with no HTTP round trip needed — see
+[`docs/architecture.md`](architecture.md).
 
-A success call comes back the same shape, just with `status: "success"` and a
-`data` field instead of `error`:
+A success call comes back the same shape, just with `status: "success"`,
+`response_code: 200`, and a `data` field instead of `error`:
 
 ```bash
 curl localhost:8000/users/123
-# {"status":"success","data":{"id":"123", ...}}
+# {"status":"success","response_code":200,"data":{"id":"123", ...}}
 ```
 
 ## Scaffolding a new project

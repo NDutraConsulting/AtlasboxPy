@@ -90,6 +90,42 @@ async def test_leading_underscore_methods_are_not_wrapped():
 
 
 @pytest.mark.asyncio
+async def test_recursion_error_is_caught_and_formatted_as_stack_overflow():
+    class Recurser(BaseController):
+        async def boom(self):
+            raise RecursionError("maximum recursion depth exceeded")
+
+    resp = await Recurser().boom()
+    assert isinstance(resp, ErrorResponse)
+    assert resp.error.code == "stack_overflow"
+    assert resp.status == "stack-overflow"
+
+
+@pytest.mark.asyncio
+async def test_memory_error_is_caught_and_formatted_as_out_of_memory():
+    class Hog(BaseController):
+        async def boom(self):
+            raise MemoryError("simulated allocation failure")
+
+    resp = await Hog().boom()
+    assert isinstance(resp, ErrorResponse)
+    assert resp.error.code == "out_of_memory"
+    assert resp.status == "out-of-memory"
+
+
+@pytest.mark.asyncio
+async def test_memory_error_message_surfaces_when_hide_internal_errors_is_false():
+    class LoudHog(BaseController):
+        hide_internal_errors = False
+
+        async def boom(self):
+            raise MemoryError("simulated allocation failure")
+
+    resp = await LoudHog().boom()
+    assert resp.error.message == "simulated allocation failure"
+
+
+@pytest.mark.asyncio
 async def test_system_exit_propagates_uncaught():
     class Controller(BaseController):
         async def crash(self):
