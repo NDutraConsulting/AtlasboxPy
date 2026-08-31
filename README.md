@@ -27,22 +27,24 @@ error handling via `atlasboxpy_controller`).
 
 ### Kanban controller (`atlasboxpy_controller`)
 
-`KanbanController` subclasses `BaseController` and owns its `KanbanService`
-outright — it's constructed with a `session_factory`, not a pre-built
-service instance, so nothing outside the controller knows the service
-exists. Every public async method below is wrapped in a try/except
-automatically, at class-definition time — no `try/except` in the method
-itself, no gateway object between the caller and the controller — and each
-takes exactly one argument, `props` (a plain dict), which it validates for
-itself via `validate_props` against the matching model in `models.py`.
-That model *is* the method's contract:
+`KanbanController` subclasses `BaseController` and orchestrates
+`KanbanService` — nothing more. It constructs the service with no
+arguments and never references a persistence-layer type (a DB session, an
+engine): that's `KanbanRepository`'s concern, several layers down (see the
+repository below for how it resolves its own session factory). Every
+public async method below is wrapped in a try/except automatically, at
+class-definition time — no `try/except` in the method itself, no gateway
+object between the caller and the controller — and each takes exactly one
+argument, `props` (a plain dict), which it validates for itself via
+`validate_props` against the matching model in `models.py`. That model
+*is* the method's contract:
 
 ```python
 # examples/fastapi_kanban/controllers/kanban_controller.py
 class KanbanController(BaseController):
-    def __init__(self, session_factory: SessionFactory) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.service = KanbanService(session_factory)  # constructed here, never injected
+        self.service = KanbanService()
 
     async def create_card(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
         payload = validate_props(CreateCardRequest, props)  # {board_id, column_id, title, description}
@@ -98,9 +100,16 @@ implicit in a separate route file.
 ### Kanban repository (`atlasboxpy_repository`)
 
 `KanbanRepository` subclasses `BaseRepository`. It owns every SQLAlchemy
-query; the service never touches a session. `get_board` — the one
-expensive assembled read (a board, its columns, every card nested inside
-them) — goes through `self.cache`, and every write invalidates that
+query — and every persistence decision, full stop: whether to reach into
+`self.cache` or hit the database is decided here, and only here, not by
+`KanbanService` above it. It's also the *only* class in this chain that
+knows `SessionFactory` (a SQLAlchemy type) exists at all — resolving one
+with no argument required, via `db.py`'s `get_default_session_factory()`,
+the same shared-process-state pattern `db_simulation.py` already uses for
+its "is the DB down right now?" flag rather than threading a value through
+every constructor between the app entry point and here. `get_board` — the
+one expensive assembled read (a board, its columns, every card nested
+inside them) — goes through `self.cache`, and every write invalidates that
 board's cache entry:
 
 ```python
@@ -109,9 +118,9 @@ cache_driver: CacheDriver = CacheDriver.BARE_METAL      # CacheEnv.REDIS
 cache_env: CacheEnv = CacheEnv.LOCAL                    # CacheEnv.REMOTE
 
 class KanbanRepository(BaseRepository):
-    def __init__(self, session_factory: SessionFactory) -> None:
+    def __init__(self, session_factory: SessionFactory | None = None) -> None:
         super().__init__(cache_driver=cache_driver, cache_env=cache_env)
-        self._session_factory = session_factory
+        self._session_factory = session_factory or get_default_session_factory()
 
     async def get_board(self, board_id: str) -> dict[str, Any] | None:
         cache_key = self._board_cache_key(board_id)
@@ -287,7 +296,7 @@ regardless of which controller or method it called — no per-endpoint
 response schema to learn:
 
 ```python
-controller = KanbanController(session_factory)
+controller = KanbanController()
 result = await controller.move_card({"card_id": card_id, "column_id": "col-doing"})
 
 match result.status:

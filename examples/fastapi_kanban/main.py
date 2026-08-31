@@ -58,7 +58,14 @@ from atlasboxpy_controller.fastapi_integration import extract_api_request, to_js
 from atlasboxpy_controller.responses import build_error_response
 
 from .controllers import KanbanController
-from .db import DEFAULT_DB_PATH, SessionFactory, init_db, make_engine, make_session_factory
+from .db import (
+    DEFAULT_DB_PATH,
+    SessionFactory,
+    init_db,
+    make_engine,
+    make_session_factory,
+    set_default_session_factory,
+)
 from .logging_setup import configure_traffic_logging
 from .models import SimulateDbErrorRequest
 from .db_simulation import set_simulation
@@ -106,7 +113,11 @@ def create_app(session_factory: SessionFactory | None = None) -> Starlette:
         engine = make_engine(f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
         session_factory = make_session_factory(engine)
 
-    controller = KanbanController(session_factory)
+    # The one place this app registers which database KanbanRepository
+    # should use — the composition root's job, not a controller's. See
+    # db.py's module docstring.
+    set_default_session_factory(session_factory)
+    controller = KanbanController()
 
     # Every route below is exactly this: extract props from the request,
     # hand them to a controller method, format the result. No payload

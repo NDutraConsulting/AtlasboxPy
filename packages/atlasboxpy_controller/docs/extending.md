@@ -98,24 +98,32 @@ The route never imports `CreateUserProps` (or any Pydantic model at all) —
 there's nothing left in the route to keep in sync with the controller's
 contract.
 
-### A controller owns its services, not the other way around
+### A controller orchestrates services, not the other way around
 
-A controller's constructor takes whatever a service needs to be built (a
-session factory, a client, config) — not a pre-built service instance.
-Nothing outside the controller should construct a service and hand it
-across that boundary:
+A controller's constructor takes no arguments and never references a
+persistence-layer type — that's the service's concern, and its
+repository's below that. Nothing outside the controller should construct
+a service and hand it across that boundary, and the controller itself
+shouldn't need to know how the service gets its data (a session factory,
+a client, config):
 
 ```python
 class UserController(BaseController):
-    def __init__(self, db_session_factory):
+    def __init__(self) -> None:
         super().__init__()
-        self.user_service = UserService(db_session_factory)  # constructed here
+        self.user_service = UserService()  # resolves its own dependencies
 ```
 
-Testability doesn't suffer for this — a test still injects whatever the
-service itself needs (a fake session factory, an in-memory driver), one
-level further down than before; it just never constructs the service
-directly.
+How `UserService` resolves what it needs is up to your app — a config
+module, a DI container, an app-level default it reads at construction
+time (see `examples/fastapi_kanban/db.py`'s
+`set_default_session_factory`/`get_default_session_factory` for one
+concrete way to do this without threading a persistence type through
+every constructor between the app entry point and the repository that
+actually needs it). Testability doesn't suffer for this — a test still
+controls what the service ultimately talks to; it just does so at the
+layer that actually needs it, not by handing the controller something it
+has no use for itself.
 
 ## How `BaseController` formats responses
 

@@ -27,7 +27,7 @@ from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import SessionFactory, session_scope
+from ..db import SessionFactory, get_default_session_factory, session_scope
 from ..db_simulation import active_session_factory
 from ..orm_models import BoardRow, CardRow, ColumnRow
 
@@ -48,9 +48,15 @@ def _card_dict(card: CardRow) -> dict[str, Any]:
 
 
 class KanbanRepository(BaseRepository):
-    def __init__(self, session_factory: SessionFactory) -> None:
+    def __init__(self, session_factory: SessionFactory | None = None) -> None:
         super().__init__(cache_driver=cache_driver, cache_env=cache_env)
-        self._session_factory = session_factory
+        # An explicit session_factory is for tests/tools that want a
+        # specific one; KanbanService's normal construction path passes
+        # none, so this resolves whatever main.py's create_app() most
+        # recently registered via set_default_session_factory() — see
+        # db.py's module docstring for why that's not passed as a
+        # parameter through KanbanService/KanbanController.
+        self._session_factory = session_factory or get_default_session_factory()
 
     @staticmethod
     def _board_cache_key(board_id: str) -> str:

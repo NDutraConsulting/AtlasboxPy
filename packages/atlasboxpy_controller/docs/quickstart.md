@@ -13,10 +13,10 @@ gRPC servicer — the core has no FastAPI dependency at all.)
 
 Subclass `BaseController`. Its public async methods are wrapped automatically
 at class-definition time, so calling one always returns a `SuccessResponse`
-or `ErrorResponse` — never a raw exception. A controller owns and
-constructs its own service — it's given whatever the service needs to be
-built, not a pre-built service instance — and each method takes a single
-`props` dict, which it validates for itself via `validate_props`:
+or `ErrorResponse` — never a raw exception. A controller orchestrates
+services — it constructs its own with no arguments and never references a
+persistence-layer type; each method takes a single `props` dict, which it
+validates for itself via `validate_props`:
 
 ```python
 from pydantic import BaseModel
@@ -26,9 +26,9 @@ class GetUserProps(BaseModel):
     user_id: str
 
 class UserController(BaseController):
-    def __init__(self, db_session_factory):
+    def __init__(self) -> None:
         super().__init__()
-        self.user_service = UserService(db_session_factory)
+        self.user_service = UserService()
 
     async def get_user(self, props: dict):
         payload = validate_props(GetUserProps, props)
@@ -55,7 +55,7 @@ from atlasboxpy_controller.fastapi_integration import extract_api_request, forma
 
 app = FastAPI()
 router = APIRouter()
-controller = UserController(db_session_factory)
+controller = UserController()
 
 @router.get("/users/{user_id}")
 async def get_user(request: Request):

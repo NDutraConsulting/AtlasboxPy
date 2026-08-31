@@ -1,9 +1,12 @@
-"""KanbanController owns and constructs its KanbanService internally —
-callers hand it a session_factory, not a service instance. A service is an
-implementation detail of how this controller gets its work done, not a
-collaborator the outside world should be wiring together and handing in;
-nothing outside this class should know KanbanService exists, let alone
-construct one and pass it across the controller boundary.
+"""KanbanController orchestrates KanbanService — nothing more. It
+constructs its service with no arguments and never references a
+persistence-layer type (SessionFactory, a session, an engine): that's
+KanbanRepository's concern (see db.py and repositories/kanban_repository.py
+for how a repository resolves the session factory main.py registered at
+startup, without it being threaded through this file or KanbanService's
+constructor). A controller's job is api-route > controller (validate the
+request, orchestrate services, send back a standardized response) >
+services — it has no business knowing how a service gets its data.
 
 KanbanService itself owns the whole board/column/card aggregate — one
 service instead of two, so the controller doesn't have to assemble
@@ -41,7 +44,6 @@ from typing import Any
 from atlasboxpy_controller import BaseController, ErrorResponse, ResponseStatus, SuccessResponse, build_error_response, validate_props
 from atlasboxpy_controller import ConflictError, DomainError, NotFoundError, TimedOutError, UnprocessableError, UpstreamServiceError, ValidationFailedError
 
-from ..db import SessionFactory
 from ..models import (
     BoardIdProps,
     CardIdProps,
@@ -64,9 +66,9 @@ _ERROR_CODE_TO_DOMAIN: dict[str, type[DomainError]] = {
 
 
 class KanbanController(BaseController):
-    def __init__(self, session_factory: SessionFactory) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.service = KanbanService(session_factory)
+        self.service = KanbanService()
 
     # Every method below takes exactly one argument: `props`, a plain dict
     # merging the request's path params and (where relevant) its body —

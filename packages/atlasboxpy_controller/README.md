@@ -51,10 +51,13 @@ pip install -e ".[dev]"
 
 ### 1. Define a controller
 
-A controller owns and constructs its own service(s) — it takes whatever a
-service needs to be built (a session factory, a client, config), not a
-pre-built service instance. Nothing outside the controller should know a
-service exists, let alone construct one and hand it across that boundary.
+A controller orchestrates services — nothing more. It constructs its own
+service(s) with no arguments, and never references a persistence-layer
+type (a DB session, an engine, a client): that's the service's concern
+(and its repository's, further down). However a service resolves what it
+needs — a config module, a DI container, an app-level default it reads at
+construction time — is up to your app; the controller doesn't know and
+doesn't need to.
 
 Each public method takes one argument, `props` — a plain dict — and
 validates it for itself via `validate_props`, against a Pydantic model
@@ -70,9 +73,9 @@ class GetUserProps(BaseModel):
     user_id: str
 
 class UserController(BaseController):
-    def __init__(self, db_session_factory):
+    def __init__(self) -> None:
         super().__init__()
-        self.user_service = UserService(db_session_factory)  # constructed here, not injected
+        self.user_service = UserService()  # resolves its own dependencies
 
     async def get_user(self, props: dict):
         payload = validate_props(GetUserProps, props)
@@ -96,7 +99,7 @@ Raising a `DomainError` still works, as a convenience escape hatch for anything 
 ### 2. Call it directly — no gateway, no `handle()`
 
 ```python
-response = await UserController(db_session_factory).get_user({"user_id": "123"})
+response = await UserController().get_user({"user_id": "123"})
 # -> SuccessResponse(data=<User>) or ErrorResponse(error=...)
 # Never a raw exception, no matter what the controller or service raised.
 ```
@@ -113,7 +116,7 @@ from fastapi import APIRouter, Request
 from atlasboxpy_controller.fastapi_integration import extract_api_request, format_json_response
 
 router = APIRouter()
-controller = UserController(db_session_factory)
+controller = UserController()
 
 @router.get("/users/{user_id}")
 async def get_user(request: Request):
@@ -127,7 +130,7 @@ A request for a missing user automatically comes back as an HTTP `404` with a fo
 ```python
 from atlasboxpy_controller import ErrorResponse, status_for_code
 
-result = await UserController(db_session_factory).get_user({"user_id": request.user_id})
+result = await UserController().get_user({"user_id": request.user_id})
 
 if isinstance(result, ErrorResponse):
     # result.status ("not-found", "timeout", "exception", ...) and

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import uuid
 
-from ..db import SessionFactory
 from ..repositories import KanbanRepository
 from .results import ServiceResult, translate_db_errors
 
@@ -38,8 +37,8 @@ def _validate_title(title: str) -> str | None:
 
 
 class KanbanService:
-    def __init__(self, session_factory: SessionFactory) -> None:
-        self._repo = KanbanRepository(session_factory)
+    def __init__(self) -> None:
+        self._repo = KanbanRepository()
 
     # --- boards ---
 

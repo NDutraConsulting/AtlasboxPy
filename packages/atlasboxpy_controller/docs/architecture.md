@@ -104,7 +104,7 @@ library, a worker script and a gRPC servicer use the exact same one line:
 **Worker:**
 
 ```python
-result = await UserController(db_session_factory).get_user({"user_id": "123"})
+result = await UserController().get_user({"user_id": "123"})
 ```
 
 **gRPC servicer method** (equivalent shape, no adapter package required):
@@ -112,7 +112,7 @@ result = await UserController(db_session_factory).get_user({"user_id": "123"})
 ```python
 from atlasboxpy_controller import ErrorResponse, status_for_code
 
-result = await UserController(db_session_factory).get_user({"user_id": request.user_id})
+result = await UserController().get_user({"user_id": request.user_id})
 
 if isinstance(result, ErrorResponse):
     context.set_code(status_for_code(result.error.code).grpc_status)
