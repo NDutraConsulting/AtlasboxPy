@@ -86,21 +86,21 @@ class KanbanController(BaseController):
         return build_error_response(error_cls(result.msg))
 ```
 
-Value added: `create_card` never raises and never talks HTTP directly —
-it builds one typed, transport-agnostic response the same way regardless
-of who's calling (see "One standardized response, read two ways" below
-for how that response still becomes a correct HTTP status when a REST
-caller is the one asking). A real bug the service didn't already
-translate is still caught by `BaseController`'s wrapper underneath. And
-because validation lives in the method next to its model instead of in a
-route, reading `create_card` alone tells you everything a call needs —
+`create_card` never raises and never talks HTTP directly — it builds one
+typed, transport-agnostic response the same way regardless of who's
+calling (see "One standardized response, read two ways" below for how
+that response still becomes a correct HTTP status when a REST caller is
+the one asking). A real bug the service didn't already translate is
+still caught by `BaseController`'s wrapper underneath. And because
+validation lives in the method next to its model instead of in a route,
+reading `create_card` alone tells you everything a call needs —
 `board_id`, `column_id`, `title`, `description` — with nothing left
 implicit in a separate route file.
 
 ### Kanban repository (`atlasboxpy_repository`)
 
 `KanbanRepository` subclasses `BaseRepository`. It owns every SQLAlchemy
-query — and every persistence decision, full stop: whether to reach into
+query and every persistence decision: whether to reach into
 `self.cache` or hit the database is decided here, and only here, not by
 `KanbanService` above it. It's also the *only* class in this chain that
 knows `SessionFactory` (a SQLAlchemy type) exists at all — resolving one
@@ -137,9 +137,9 @@ class KanbanRepository(BaseRepository):
         return _card_dict(card)
 ```
 
-Value added: swapping `cache_driver`/`cache_env` from an in-memory dict to
-Redis is a two-constant change — `KanbanService` and `KanbanController`
-never know a cache exists, let alone which technology backs it.
+Swapping `cache_driver`/`cache_env` from an in-memory dict to Redis is a
+two-constant change — `KanbanService` and `KanbanController` never know a
+cache exists, let alone which technology backs it.
 
 ## One standardized response, read two ways
 
@@ -169,12 +169,11 @@ sets a real one on the wire — it's that an **in-process caller never has
 to make an HTTP call to find out what `response_code` would have been**.
 An agent holding a `KanbanController` instance reads `result.status`/
 `result.response_code` straight off the object it already has. No
-handshake, no client, no OpenAPI schema to parse — which is also what
-makes this pleasant to develop and debug locally: an agent (or a human)
-exploring a change can call a controller method in a REPL and get the
-exact same verdict a deployed REST caller would see, without standing up
-a server, a network hop, or distributed request-tracing to explain what
-happened.
+handshake, no client, no OpenAPI schema to parse — which also simplifies
+local development and debugging: an agent (or a human) exploring a change
+can call a controller method in a REPL and get the exact same verdict a
+deployed REST caller would see, without standing up a server, a network
+hop, or distributed request-tracing to explain what happened.
 
 **Success** (`create_card`) — `response_code` doubles as the HTTP status
 `to_json_response()` sets, so this is `200` on the wire too:
@@ -310,11 +309,11 @@ match result.status:
         ...  # a real bug, not a business outcome — don't retry blindly, flag it
 ```
 
-Value added: the agent doesn't need a REST client, an OpenAPI schema, or
-HTTP-status guessing to know what happened, and doesn't need a live
-server up at all to develop or test against this — it calls the same
-method a route calls, with the same one-dict argument, in-process, and
-gets back a typed, machine-checkable verdict either way.
+The agent doesn't need a REST client, an OpenAPI schema, or HTTP-status
+guessing to know what happened, and doesn't need a running server to
+develop or test against this — it calls the same method a route calls,
+with the same one-dict argument, in-process, and gets back a typed,
+machine-checkable verdict either way.
 
 ## License
 
