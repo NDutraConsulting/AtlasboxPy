@@ -208,21 +208,25 @@ the class skeleton for every new feature.
 ## The OpenAPI registry
 
 A "thin" route — one that doesn't type its body as a Pydantic model, e.g.
-because it validates the payload itself — hides its real request shape from
+because it just extracts `props` and calls the controller, which validates
+the shape itself via `validate_props` — hides its real request shape from
 FastAPI's automatic OpenAPI generation. `ModelRegistry` fills that gap
 without changing the handler's signature:
 
 ```python
 from atlasboxpy_controller.registry import ModelRegistry
-from atlasboxpy_controller.fastapi_integration import apply_registry_to_route, iter_api_routes
+from atlasboxpy_controller.fastapi_integration import (
+    apply_registry_to_route,
+    extract_api_request,
+    format_json_response,
+    iter_api_routes,
+)
 
 registry = ModelRegistry()
 
-@registry.register("POST", "/users", CreateUserRequest, raises=[AlreadyExistsError])
+@registry.register("POST", "/users", CreateUserProps, raises=[AlreadyExistsError])
 async def create_user(request: Request):
-    payload = CreateUserRequest.model_validate(await request.json())
-    result = await controller.create_user(payload)
-    return to_json_response(result)
+    return await format_json_response(controller.create_user(await extract_api_request(request)))
 
 # after building the app/router, before the first app.openapi() call:
 for route in iter_api_routes(app.routes):
