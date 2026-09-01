@@ -9,9 +9,11 @@ that ends up. A different app could point the same logger at plain
 stdout, syslog, whatever — without touching `_call()` at all.
 
 configure_traffic_logging() is called once at import time by main.py.
-Writes to logs/{YYYY-mm-dd}_atlasboxpy_controller.log (relative to this file,
-i.e. examples/fastapi_kanban/logs/), rolling over to a new file at midnight
-local time without needing a process restart.
+Writes to {YYYY-mm-dd}_atlasboxpy_controller.log inside app/.logs/ (a
+sibling of backend/, not a package — it can't be, since Python can't
+import from a directory whose name starts with "." — this module just
+points at it), rolling over to a new file at midnight local time without
+needing a process restart.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
-_LOG_DIR = Path(__file__).parent / "logs"
+_LOG_DIR = Path(__file__).parent.parent / ".logs"
 
 
 class _DailyRotatingFileHandler(logging.Handler):

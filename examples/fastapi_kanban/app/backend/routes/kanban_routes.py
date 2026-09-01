@@ -1,80 +1,46 @@
-"""Kanban demo: Starlette + SQLite (via SQLAlchemy) backend, plus a static,
-DDD-organized frontend — one folder per feature/page, each holding its own
-CSS and a {feature}-controller.js that orchestrates {feature}-api.js +
-{feature}-ui.js.
-
-Backend layering:
-
-    api-route > controller (validates its own props, decides what a
-        failure means) > [services > [libraries, apis, repositories, models]]
-
-Each api_route below is a one-liner: `_call(request, controller.method)`.
-`_call` merges the request into a plain `props` dict (via
-atlasboxpy_controller's `extract_api_request` — path params, query params,
-and the JSON body, path params winning on a collision), passes that
-straight to the controller method with no payload object built in the
-route, logs the request/response to the traffic log, and converts the
-result to a JSONResponse. The controller method is the one place that
-validates `props` (via `validate_props`, against the matching model in
-models.py) — a route file that never mentions a Pydantic model at all is
-the point: read the controller method and its model, not the route, to
-know what a call needs.
-
-KanbanController subclasses BaseController, which wraps every public async
-method in a try/except at class-definition time: the controller method
-itself builds a SuccessResponse/ErrorResponse directly (see
-controllers/kanban_controller.py), and BaseController's wrapper is just the
-safety net underneath that for whatever KanbanService (or a failed
-validate_props call) didn't already translate. There's no gateway object
-anywhere in this file.
-
-Run it with:
-    pip install -e "packages/atlasboxpy_controller[dev]"   # needs sqlalchemy + aiosqlite
-    pip install -e "packages/atlasboxpy_repository"
-    uvicorn examples.fastapi_kanban.main:app --reload
-(or just ./run.sh from this directory)
-
-Then open http://127.0.0.1:8000/ in a browser. Every request that moves
-through the controller is logged to logs/{YYYY-mm-dd}_atlasboxpy_controller.log
-— see logging_setup.py.
+"""Minimal HTTP routing — forwards clean requests to KanbanController,
+nothing else. `build_routes(controller)` is the only thing main.py calls
+from here; this file has no idea how the controller, its service, or
+anything under infrastructure/ works, only that calling a controller
+method returns a SuccessResponse/ErrorResponse.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator, Callable, Coroutine
-from contextlib import asynccontextmanager
-from pathlib import Path
+from collections.abc import Callable, Coroutine
 from typing import Any
 
-from starlette.applications import Starlette
+from atlasboxpy_controller import ErrorResponse, SuccessResponse, ValidationFailedError
+from atlasboxpy_controller.fastapi_integration import (
+    extract_api_request,
+    to_json_response,
+)
+from atlasboxpy_controller.responses import build_error_response
+from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
-from atlasboxpy_controller import ErrorResponse, SuccessResponse, ValidationFailedError
-from atlasboxpy_controller.fastapi_integration import extract_api_request, to_json_response
-from atlasboxpy_controller.responses import build_error_response
+from starlette.routing import Route
 
-from .controllers import KanbanController
-from .db import (
-    DEFAULT_DB_PATH,
-    SessionFactory,
-    init_db,
-    make_engine,
-    make_session_factory,
-    set_default_session_factory,
-)
-from .logging_setup import configure_traffic_logging
-from .models import SimulateDbErrorRequest
-from .db_simulation import set_simulation
-from .validation import validate_body
+from ..controllers import KanbanController
+from ..infrastructure.database.db_connections.db_simulation import set_simulation
+from ..validation import validate_body
 
-_STATIC_DIR = Path(__file__).parent / "static"
 _traffic_log = logging.getLogger("atlasboxpy_controller.traffic")
 
 _ControllerMethod = Callable[[dict[str, Any]], Coroutine[Any, Any, "SuccessResponse[Any] | ErrorResponse"]]
+
+
+class SimulateDbErrorRequest(BaseModel):
+    """Body shape for the debug-only /api/debug/db-connection route below
+    — not a KanbanController request contract (see
+    controllers/kanban_controller.py for those), since this route
+    deliberately bypasses the controller entirely. Defined here, next to
+    its one and only caller, rather than in a shared models module."""
+
+    enabled: bool
+    mode: str = "error"  # "error" or "timeout"
 
 
 def _error_response(exc: ValidationFailedError) -> JSONResponse:
@@ -103,26 +69,11 @@ async def _call(request: Request, method: _ControllerMethod) -> JSONResponse:
     return to_json_response(result)
 
 
-def create_app(session_factory: SessionFactory | None = None) -> Starlette:
-    """App factory. With no arguments, builds the real SQLite file and
-    creates its schema on startup — the production path. Tests pass their
-    own `session_factory` (already pointed at a fresh in-memory database
-    with its schema already created), for full isolation between tests."""
-    owns_engine = session_factory is None
-    if session_factory is None:
-        engine = make_engine(f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
-        session_factory = make_session_factory(engine)
-
-    # The one place this app registers which database KanbanRepository
-    # should use — the composition root's job, not a controller's. See
-    # db.py's module docstring.
-    set_default_session_factory(session_factory)
-    controller = KanbanController()
-
-    # Every route below is exactly this: extract props from the request,
-    # hand them to a controller method, format the result. No payload
-    # object is built here — the controller method validates its own props
-    # (see controllers/kanban_controller.py and models.py).
+def build_routes(controller: KanbanController) -> list[Route]:
+    """Every route below is exactly this: extract props from the request,
+    hand them to a controller method, format the result. No payload
+    object is built here — the controller method validates its own props
+    (see controllers/kanban_controller.py)."""
 
     async def create_board(request: Request) -> JSONResponse:
         return await _call(request, controller.create_board)
@@ -172,7 +123,7 @@ def create_app(session_factory: SessionFactory | None = None) -> Starlette:
         await set_simulation(mode)
         return JSONResponse({"simulate_db_error": payload.enabled, "mode": mode})
 
-    routes = [
+    return [
         Route("/api/boards", create_board, methods=["POST"]),
         Route("/api/boards", list_boards, methods=["GET"]),
         Route("/api/boards/{board_id}", get_board, methods=["GET"]),
@@ -184,19 +135,4 @@ def create_app(session_factory: SessionFactory | None = None) -> Starlette:
         Route("/api/cards/{card_id}/move", move_card, methods=["POST"]),
         Route("/api/cards/{card_id}", delete_card, methods=["DELETE"]),
         Route("/api/debug/db-connection", set_db_connection_simulation, methods=["POST"]),
-        # Registered after the API routes so /api/* is matched first — the
-        # static mount at "/" would otherwise greedily swallow every path.
-        Mount("/", app=StaticFiles(directory=str(_STATIC_DIR), html=True), name="static"),
     ]
-
-    @asynccontextmanager
-    async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        if owns_engine:
-            await init_db(engine)
-        yield
-
-    return Starlette(routes=routes, lifespan=lifespan)
-
-
-configure_traffic_logging()
-app = create_app()

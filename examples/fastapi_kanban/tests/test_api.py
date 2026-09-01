@@ -8,16 +8,29 @@ fixture — full isolation, no state bleeding between tests (unlike the
 shared traffic log file, which persists across the whole test session and
 is handled separately, by matching on each test's own unique data)."""
 
+import asyncio
 from datetime import datetime
+from pathlib import Path
 
 import pytest
+from atlasboxpy_db import StorageUnavailable
 from sqlalchemy.pool import StaticPool
 from starlette.testclient import TestClient
 
-from examples.fastapi_kanban.db import init_db, make_engine, make_session_factory
-from examples.fastapi_kanban.logging_setup import _LOG_DIR
-from examples.fastapi_kanban.main import create_app
-from examples.fastapi_kanban.db_simulation import set_simulation
+from examples.fastapi_kanban.app.backend.infrastructure.database.db_connections.db_simulation import (
+    set_simulation,
+)
+from examples.fastapi_kanban.app.backend.infrastructure.database.session import (
+    init_db,
+    make_engine,
+    make_session_factory,
+)
+from examples.fastapi_kanban.app.backend.infrastructure.repositories import (
+    CardRepository,
+)
+from examples.fastapi_kanban.app.backend.logging_setup import _LOG_DIR
+from examples.fastapi_kanban.app.backend.main import create_app
+from examples.fastapi_kanban.app.backend.services import KanbanService, ServiceStatus
 
 
 @pytest.fixture
@@ -78,6 +91,68 @@ def test_add_column_and_reject_duplicate_name(client):
     dup = client.post(f"/api/boards/{board['id']}/columns", json={"name": "Blocked"})
     assert dup.status_code == 409
     assert dup.json()["error"]["code"] == "conflict"
+    # KanbanController.add_column() appends this hint specifically to the
+    # "conflict" case — it describes the duplicate-name rule, not the
+    # empty-name one (see test_add_empty_column_name_does_not_get_the_
+    # duplicate_name_hint below for the case this used to be misfired on).
+    assert "hint: column names must be unique per board" in dup.json()["error"]["message"]
+
+
+def test_add_empty_column_name_does_not_get_the_duplicate_name_hint(client):
+    """A blank name is validation_failed, not conflict — it must not pick
+    up add_column()'s "unique per board" hint, which describes a different
+    failure than "the name is empty"."""
+    board = _create_board(client)
+
+    resp = client.post(f"/api/boards/{board['id']}/columns", json={"name": "   "})
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"]["code"] == "validation_failed"
+    assert body["error"]["message"] == "Column name must not be empty"
+    assert "hint" not in body["error"]["message"]
+
+
+async def test_concurrent_add_column_with_same_name_only_one_succeeds(tmp_path: Path):
+    """Regression test for a TOCTOU race: add_column()'s duplicate-name
+    check (kanban_service.py) reads existing columns before either
+    concurrent call commits, so an in-app pre-check alone can't stop two
+    simultaneous requests from both passing it. columns(board_id, name)
+    has a real UNIQUE constraint (tables/column_table.py) as the actual
+    guarantee — session_scope translates the loser's IntegrityError into
+    StorageConflict (atlasboxpy_db's quantum_registry.py), which
+    translate_db_errors (services/results.py) turns into a "conflict"
+    ServiceResult instead of an uncaught exception.
+
+    Uses a real file-backed SQLite database, not the `client` fixture's
+    shared in-memory `StaticPool` one: `StaticPool` hands out the same
+    physical connection to every checkout, which breaks transaction
+    isolation between two genuinely concurrent writers on this same
+    connection and would make this test's result meaningless — a
+    file-backed database gives each session its own real connection, the
+    same as production.
+    """
+    engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'race.db'}")
+    await init_db(engine)
+    create_app(session_factory=make_session_factory(engine))
+    await set_simulation(None)
+    service = KanbanService()
+
+    board = await service.create_board("Race board")
+    board_id = board.result.data["id"]
+
+    results = await asyncio.gather(
+        service.add_column(board_id, "Duplicate"),
+        service.add_column(board_id, "Duplicate"),
+    )
+    assert sorted(r.status.value for r in results) == ["error", "success"]
+    conflict = next(r for r in results if r.status == ServiceStatus.ERROR)
+    assert conflict.error_code == "conflict"
+
+    final = await service.get_board(board_id)
+    names = [c["name"] for c in final.result.data["columns"]]
+    assert names.count("Duplicate") == 1
+
+    await engine.dispose()
 
 
 def test_delete_column_with_cards_conflicts(client):
@@ -174,6 +249,34 @@ def test_delete_board_removes_it(client):
     resp = client.delete(f"/api/boards/{board['id']}")
     assert resp.status_code == 200
     assert client.get(f"/api/boards/{board['id']}").status_code == 404
+
+
+def test_delete_board_fails_safe_when_the_cascade_delete_fails_after_the_board_is_gone(
+    client, monkeypatch
+):
+    """delete_board() deletes the board row first, then cascades to its
+    cards/columns — deliberately, so a failure partway through the
+    cascade still leaves the board itself already gone (row deleted,
+    cache invalidated) instead of an orphaned board that still looks
+    intact and returns stale data. Simulates a failure in just the
+    cascade step — the db_simulation toggle only offers a coarser,
+    whole-database-down failure — by monkeypatching
+    CardRepository.delete_for_board directly."""
+    board = _create_board(client)
+    board_id = board["id"]
+
+    async def _boom(self, board_id: str) -> None:
+        raise StorageUnavailable("simulated cascade failure")
+
+    monkeypatch.setattr(CardRepository, "delete_for_board", _boom)
+    resp = client.delete(f"/api/boards/{board_id}")
+    assert resp.status_code == 502
+    assert resp.json()["error"]["code"] == "upstream_error"
+    monkeypatch.undo()
+
+    # The board itself is already gone despite the cascade failing above
+    # — not a stale "still exists with all its data" response.
+    assert client.get(f"/api/boards/{board_id}").status_code == 404
 
 
 def test_static_index_page_is_served(client):
@@ -296,10 +399,57 @@ def test_simulate_db_timeout_maps_to_its_own_timeout_status(client):
     client.post("/api/debug/db-connection", json={"enabled": False})
 
 
+async def test_concurrent_set_simulation_calls_are_serialized(monkeypatch):
+    """set_simulation() mutates several module-level globals across
+    multiple await points (db_simulation.py); without its `_lock`, two
+    concurrent toggle calls (two overlapping POST /api/debug/db-connection
+    requests) can interleave and leave the simulation stuck in an
+    unintended mode with a leaked, never-disposed connection.
+
+    Forces a deterministic interleave — rather than a probabilistic stress
+    test hoping asyncio scheduling happens to trigger it — by making
+    AsyncEngine.connect() (the one real await point set_simulation("timeout")
+    exercises) pause mid-call, and asserting no second call's own connect()
+    starts until the first one has both returned AND released the lock."""
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from examples.fastapi_kanban.app.backend.infrastructure.database.db_connections import (
+        db_simulation as sim_module,
+    )
+
+    active = 0
+    max_active = 0
+    real_connect = AsyncEngine.connect
+
+    async def tracking_connect(self, *args, **kwargs):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.02)
+        try:
+            return await real_connect(self, *args, **kwargs)
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(AsyncEngine, "connect", tracking_connect)
+    try:
+        await asyncio.gather(
+            sim_module.set_simulation("timeout"),
+            sim_module.set_simulation("timeout"),
+        )
+        # If the lock didn't serialize these, both calls' connect() calls
+        # would overlap (max_active == 2) — the exact interleave that lets
+        # one call's teardown miss the other's not-yet-assigned state.
+        assert max_active == 1
+    finally:
+        monkeypatch.undo()
+        await sim_module.set_simulation(None)
+
+
 def test_writes_invalidate_the_cached_board(client):
     """A write affecting a board (adding a column here) invalidates that
-    board's cache entry in KanbanRepository, so the next read reflects the
-    change instead of serving stale cached data."""
+    board's columns cache entry in ColumnRepository, so the next read
+    reflects the change instead of serving stale cached data."""
     board = _create_board(client, name="Invalidate me")
     assert len(client.get(f"/api/boards/{board['id']}").json()["data"]["columns"]) == 3
 
@@ -311,11 +461,13 @@ def test_writes_invalidate_the_cached_board(client):
 
 
 def test_cached_board_survives_db_being_down(client):
-    """KanbanRepository caches get_board — a board that's already been read
-    (creating one populates the cache via create_board()'s own trailing
-    get_board() call) keeps serving correctly even while the (simulated)
-    database is down, since the read never has to reach it. This is the
-    payoff of caching in the repository, not just a memory-saving trick."""
+    """BoardRepository/ColumnRepository/CardRepository each cache their own
+    read (get_by_id / list_for_board / list_for_board) — a board that's
+    already been read (creating one populates all three via
+    create_board()'s own trailing get_board() call) keeps serving
+    correctly even while the (simulated) database is down, since
+    KanbanService's assembly never has to reach it. This is the payoff of
+    caching in each repository, not just a memory-saving trick."""
     board = _create_board(client, name="Cached board")
 
     client.post("/api/debug/db-connection", json={"enabled": True})

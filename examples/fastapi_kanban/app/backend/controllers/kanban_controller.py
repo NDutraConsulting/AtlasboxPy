@@ -1,12 +1,22 @@
 """KanbanController orchestrates KanbanService — nothing more. It
 constructs its service with no arguments and never references a
 persistence-layer type (SessionFactory, a session, an engine): that's
-KanbanRepository's concern (see db.py and repositories/kanban_repository.py
-for how a repository resolves the session factory main.py registered at
-startup, without it being threaded through this file or KanbanService's
-constructor). A controller's job is api-route > controller (validate the
+each entity repository's concern (see infrastructure/repositories/ —
+BoardRepository/ColumnRepository/CardRepository — for how a repository
+resolves its own data from infrastructure/database/, without any of it
+being threaded through this file or KanbanService's constructor; and
+KanbanService's own docstring for why assembling one board out of three
+entities' data is KanbanService's job, not any one repository's). A
+controller's job is api-route > controller (validate the
 request, orchestrate services, send back a standardized response) >
 services — it has no business knowing how a service gets its data.
+
+The Pydantic request models right below the imports are embedded here,
+not in a separate file: they're KanbanController's own request
+contracts, and only KanbanController ever validates against them.
+Reading the incoming data contract next to the method that validates and
+acts on it means there's nowhere else to look — no file-hopping to
+reconstruct what a call needs.
 
 KanbanService itself owns the whole board/column/card aggregate — one
 service instead of two, so the controller doesn't have to assemble
@@ -41,19 +51,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from atlasboxpy_controller import BaseController, ErrorResponse, ResponseStatus, SuccessResponse, build_error_response, validate_props
-from atlasboxpy_controller import ConflictError, DomainError, NotFoundError, TimedOutError, UnprocessableError, UpstreamServiceError, ValidationFailedError
-
-from ..models import (
-    BoardIdProps,
-    CardIdProps,
-    CreateBoardRequest,
-    CreateCardRequest,
-    CreateColumnRequest,
-    DeleteColumnProps,
-    MoveCardRequest,
-    UpdateCardRequest,
+from atlasboxpy_controller import (
+    BaseController,
+    ConflictError,
+    DomainError,
+    ErrorResponse,
+    NotFoundError,
+    ResponseStatus,
+    SuccessResponse,
+    TimedOutError,
+    UnprocessableError,
+    UpstreamServiceError,
+    ValidationFailedError,
+    build_error_response,
+    validate_props,
 )
+from pydantic import BaseModel
+
 from ..services import KanbanService, ServiceResult, ServiceStatus
 from ..services.kanban_service import MAX_TITLE_LENGTH
 
@@ -65,6 +79,53 @@ _ERROR_CODE_TO_DOMAIN: dict[str, type[DomainError]] = {
 }
 
 
+# --- request contracts — each one is the full props shape for the method below it ---
+
+
+class CreateBoardRequest(BaseModel):
+    name: str
+
+
+class BoardIdProps(BaseModel):
+    """get_board / delete_board — the board_id path param, nothing else."""
+
+    board_id: str
+
+
+class CreateColumnRequest(BaseModel):
+    board_id: str
+    name: str
+
+
+class DeleteColumnProps(BaseModel):
+    board_id: str
+    column_id: str
+
+
+class CreateCardRequest(BaseModel):
+    board_id: str
+    column_id: str
+    title: str
+    description: str = ""
+
+
+class UpdateCardRequest(BaseModel):
+    card_id: str
+    title: str | None = None
+    description: str | None = None
+
+
+class MoveCardRequest(BaseModel):
+    card_id: str
+    column_id: str
+
+
+class CardIdProps(BaseModel):
+    """delete_card — the card_id path param, nothing else."""
+
+    card_id: str
+
+
 class KanbanController(BaseController):
     def __init__(self) -> None:
         super().__init__()
@@ -72,12 +133,12 @@ class KanbanController(BaseController):
 
     # Every method below takes exactly one argument: `props`, a plain dict
     # merging the request's path params and (where relevant) its body —
-    # see main.py's `_call`, backed by atlasboxpy_controller's
-    # extract_api_request. The route never builds a payload object; each
-    # method validates its own `props` via `validate_props`, against the
-    # matching model in models.py. That model IS the request contract —
-    # read it next to the method and there's nothing left to guess about
-    # what a call needs.
+    # see routes/kanban_routes.py's `_call`, backed by
+    # atlasboxpy_controller's extract_api_request. The route never builds
+    # a payload object; each method validates its own `props` via
+    # `validate_props`, against the matching model declared above. That
+    # model IS the request contract — read it next to the method and
+    # there's nothing left to guess about what a call needs.
 
     # --- boards ---
 
@@ -117,7 +178,7 @@ class KanbanController(BaseController):
     async def add_column(self, props: dict[str, Any]) -> SuccessResponse[Any] | ErrorResponse:
         payload = validate_props(CreateColumnRequest, props)
         response = self._response_for(await self.service.add_column(payload.board_id, payload.name))
-        if isinstance(response, ErrorResponse) and response.error.code == "validation_failed":
+        if isinstance(response, ErrorResponse) and response.error.code == "conflict":
             response.error.message += " (hint: column names must be unique per board)"
         return response
 

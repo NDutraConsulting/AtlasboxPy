@@ -17,26 +17,33 @@ related packages, not PEP 420 namespace packages).
 - [`packages/atlasboxpy_repository/`](packages/atlasboxpy_repository/) —
   a `BaseRepository` base class with a pluggable, read-through cache —
   swap between an in-memory dict and Redis via two config constants.
+- [`packages/atlasboxpy_db/`](packages/atlasboxpy_db/) — `DBQuantum` +
+  `ShardRouter` for SQLAlchemy: a single physical database is just a
+  `ShardRouter` with one shard, not a separate type from a sharded one —
+  going to N databases later is a config change, not a migration.
 
 ## Which one do I need?
 
 ```
 Building something that talks to a database and might need caching?
                               │
-                ┌─────────────┴─────────────┐
-                │                            │
-   Need one consistent response shape   Need a pluggable, read-through
-   across REST/worker/agent callers,   cache in front of your data
-   with error handling that's         access, without hand-rolling
-   structural, not opt-in per route?  get/set/invalidate plumbing?
-                │                            │
-                ▼                            ▼
-   atlasboxpy_controller               atlasboxpy_repository
-   (BaseController)                    (BaseRepository)
-                │                            │
-                └─────────────┬──────────────┘
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                      │
+   Need one consistent   Need a pluggable,      Need to configure
+   response shape        read-through cache     which physical
+   across REST/worker/   in front of your       database (or shard)
+   agent callers, with   data access, without   a table lives in,
+   error handling that's hand-rolling            decoupled from the
+   structural, not       get/set/invalidate      query logic that
+   opt-in per route?     plumbing?               uses it?
+        │                     │                      │
+        ▼                     ▼                      ▼
+   atlasboxpy_controller  atlasboxpy_repository  atlasboxpy_db
+   (BaseController)       (BaseRepository)       (DBQuantum/ShardRouter)
+        │                     │                      │
+        └─────────────────────┼──────────────────────┘
                                ▼
-             Most real apps use both together — see
+             Most real apps use all three together — see
              examples/fastapi_kanban for the full stack.
 ```
 
@@ -44,7 +51,10 @@ Each package's own `docs/decisions.md` has the full ADRs — what was
 considered and rejected for its non-obvious choices, with
 performance/portability/debuggability/evolvability trade-offs for each:
 [`atlasboxpy_controller`](packages/atlasboxpy_controller/docs/decisions.md) ·
-[`atlasboxpy_repository`](packages/atlasboxpy_repository/docs/decisions.md).
+[`atlasboxpy_repository`](packages/atlasboxpy_repository/docs/decisions.md) ·
+[`atlasboxpy_db`](packages/atlasboxpy_db/docs/decisions.md) ·
+[`examples/fastapi_kanban`](examples/fastapi_kanban/docs/decisions.md) (the
+Entity-Type Storage pattern, tying all three together — see below).
 
 ## Examples
 
@@ -58,8 +68,9 @@ error handling via `atlasboxpy_controller`).
 `KanbanController` subclasses `BaseController` and orchestrates
 `KanbanService` — nothing more. It constructs the service with no
 arguments and never references a persistence-layer type (a DB session, an
-engine): that's `KanbanRepository`'s concern, several layers down (see the
-repository below for how it resolves its own session factory). Every
+engine): that's each entity repository's concern, several layers down
+(see the repositories below for how they resolve their own session
+factories). Every
 public async method below is wrapped in a try/except automatically, at
 class-definition time — no `try/except` in the method itself, no gateway
 object between the caller and the controller — and each takes exactly one
@@ -125,60 +136,117 @@ reading `create_card` alone tells you everything a call needs —
 `board_id`, `column_id`, `title`, `description` — with nothing left
 implicit in a separate route file.
 
-### Kanban repository (`atlasboxpy_repository`)
+### Kanban repositories (`atlasboxpy_repository`) + Entity-Type Storage
 
-`KanbanRepository` subclasses `BaseRepository`. It owns every SQLAlchemy
-query and every persistence decision: whether to reach into
-`self.cache` or hit the database is decided here, and only here, not by
-`KanbanService` above it. It's also the *only* class in this chain that
-knows `SessionFactory` (a SQLAlchemy type) exists at all — and it doesn't
-hold one as state, either: `_session()` resolves `get_default_session_factory()`
-fresh on every call (the same shared-process-state pattern `db_simulation.py`
-already uses for its "is the DB down right now?" flag, resolved fresh
-there too, rather than a value threaded through every constructor between
-the app entry point and here, or cached and left to go stale). `get_board`
-— the one expensive assembled read (a board, its columns, every card
-nested inside them) — goes through `self.cache`, and every write
-invalidates that board's cache entry:
+`BoardRepository`, `ColumnRepository`, `CardRepository` each subclass
+`BaseRepository` and are the only places in this chain that touch
+`self.cache` — `KanbanService` and `KanbanController` never see it, and
+none of the three repositories knows the other two exist. None talks
+SQLAlchemy directly either, or ever sees a raw ORM row: each
+independently-accessed entity (`Board`, `Column`, `Card` — plain
+dataclasses in `entities.py`) gets its own
+`orm_models/{entity_type}_orm_model.py` — a class naming only the
+operations that entity needs — with its own connection config in
+`db_connections/` (the same two-constants-at-the-top-of-the-file
+convention `cache_driver`/`cache_env` already use for caching, applied to
+"which database"). No separate interface class sits above it: with one
+implementation and no second one planned, that would just be the same
+method signatures restated in a second file — the contract is this
+class's own public methods and their `Card`/`None` return types:
 
 ```python
-# examples/fastapi_kanban/repositories/kanban_repository.py
-cache_driver: CacheDriver = CacheDriver.BARE_METAL      # CacheEnv.REDIS
-cache_env: CacheEnv = CacheEnv.LOCAL                    # CacheEnv.REMOTE
+# examples/fastapi_kanban/app/backend/infrastructure/database/orm_models/card_orm_model.py
+class SQLAlchemyCardStorage:
+    def __init__(self, sessions: SessionOpener) -> None:
+        self._sessions = sessions
 
-class KanbanRepository(BaseRepository):
-    def __init__(self) -> None:
-        super().__init__(cache_driver=cache_driver, cache_env=cache_env)
-
-    def _session(self) -> AbstractAsyncContextManager[AsyncSession]:
-        return session_scope(active_session_factory(get_default_session_factory()))
-
-    async def get_board(self, board_id: str) -> dict[str, Any] | None:
-        cache_key = self._board_cache_key(board_id)
-        cached = await self.cache.get(cache_key)
-        if cached is not None:
-            return cached
-        # ... assemble board + columns + cards from SQLAlchemy ...
-        await self.cache.set(cache_key, data)
-        return data
-
-    async def add_card(self, board_id: str, column_id: str, title: str, description: str) -> dict[str, Any]:
-        # ... insert CardRow ...
-        await self.cache.invalidate(self._board_cache_key(board_id))
-        return _card_dict(card)
+    async def create(self, board_id: str, column_id: str, title: str, description: str) -> Card:
+        card_id = str(uuid.uuid4())
+        async with session_scope(self._sessions) as session:
+            session.add(CardRow(id=card_id, board_id=board_id, column_id=column_id,
+                                 title=title, description=description))
+        return Card(id=card_id, board_id=board_id, column_id=column_id,
+                     title=title, description=description)
 ```
 
-Swapping `cache_driver`/`cache_env` from an in-memory dict to Redis is a
-two-constant change — `KanbanService` and `KanbanController` never know a
-cache exists, let alone which technology backs it. Those two constants
-are also deployment decisions with nothing to do with `KanbanRepository`'s
-own code: `BARE_METAL` keeps the cache in-process — nothing shared,
-nothing reachable over the network, right for a single instance or an
-agent running locally; `REDIS` with `CacheEnv.REMOTE` makes it a cache
-every node/replica actually shares (they all point at the same
-`REDIS_URL`), and since that's an environment variable, relocating it to
-a different cloud account, region, or a network-isolated instance for
-security reasons is a config change, not a code change.
+That buys five things:
+
+- **Cache invalidation stays with the entity that owns the data.** Each
+  repository only ever invalidates its own cache key
+  (`ColumnRepository.create` touches `kanban:columns:{board_id}`,
+  nothing else) — there's one place to audit per entity, and adding a
+  card no longer busts the columns cache the way one shared "the whole
+  board" cache entry used to.
+- **An entity's database is a config change, not a refactor.** `Card` (by
+  far the highest write volume) can move onto its own instance — more DB
+  compute surface, higher throughput, no contention with `Board`'s much
+  colder read path — by editing its `db_connections/` config, nothing
+  else. `DBQuantumRegistry` (from `atlasboxpy_db`) caches engines/session
+  factories by quantum name, so entities that still share one also still
+  share a connection pool.
+- **Callers see application types, never a SQLAlchemy row.** `SQLAlchemyCardStorage`
+  returns `Card` (a plain dataclass) — not because a future backend swap
+  demands it, but because a `BoardRow`/`CardRow` is session-bound and
+  cache-unsafe: `CardRepository.cache.set()` needs a JSON-serializable
+  value, not a live ORM row that can raise once its session closes.
+- **The trade-off is explicit, not hidden.** Multi-entity operations
+  (`create_board` inserting a board plus its default columns) no longer
+  get a free atomic transaction once entities can live on different
+  quanta — see [`examples/fastapi_kanban/docs/decisions.md`](examples/fastapi_kanban/docs/decisions.md#adr-1-entity-type-storage-one-sqlalchemyentitytypestorage-class-per-entity-not-one-shared-session-across-the-whole-aggregate)
+  for what that costs and when it actually starts to matter, including a
+  note on why this design dropped its first-pass `Protocol` interfaces,
+  and [ADR-3](examples/fastapi_kanban/docs/decisions.md#adr-3-entity-scoped-repositories-boardrepositorycolumnrepositorycardrepository-not-one-shared-kanbanrepository--cross-entity-assembly-is-kanbanservices-job)
+  for why assembling a board out of three entities is `KanbanService`'s
+  job, not any one repository's.
+- **A non-SQL backend that's been rejected says so, out loud.** Not every
+  entity fits SQLAlchemy: `CardActivityLog` (append-only, "last N events
+  for this card") gets its own `CassandraQuantum` instead of forcing a
+  relational index onto a partition-and-scan access pattern. And when a
+  backend was actually considered and turned down — `MongoBoardStorage`
+  — its constructor doesn't just not exist; it raises
+  `UnsupportedBackendError` with the real reasoning attached (Postgres's
+  JSONB/pgvector/partitioning cover what MongoDB would have bought), so a
+  developer reaching for Mongo later hits the decision, not silence. See
+  [ADR-2](examples/fastapi_kanban/docs/decisions.md#adr-2-non-sql-backends-get-their-own-config-type-a-rejected-backend-raises-with-its-reasoning-attached-not-just-missing)
+  for the full rejection reasoning and what was considered instead.
+
+`KanbanService.get_board` — the one expensive assembled read (a board,
+its columns, every card nested inside them) — is where those three caches
+actually pay off: each repository call below is its own read-through
+cache, and the three run concurrently since none depends on the others:
+
+```python
+# examples/fastapi_kanban/app/backend/services/kanban_service.py
+class KanbanService:
+    def __init__(self) -> None:
+        self._boards = BoardRepository()
+        self._columns = ColumnRepository()
+        self._cards = CardRepository()
+
+    async def get_board(self, board_id: str) -> ServiceResult:
+        board, columns, cards = await asyncio.gather(
+            self._boards.get_by_id(board_id),      # its own cache: kanban:board:{id}
+            self._columns.list_for_board(board_id), # its own cache: kanban:columns:{board_id}
+            self._cards.list_for_board(board_id),    # its own cache: kanban:cards:{board_id}
+        )
+        if board is None:
+            return ServiceResult.error(f"Board {board_id} not found", code="not_found")
+        # ... assemble board + columns + cards into one dict ...
+        return ServiceResult.ok(data)
+```
+
+Swapping a repository's `cache_driver`/`cache_env` from an in-memory dict
+to Redis is a two-constant change, made independently per entity —
+`KanbanService` and `KanbanController` never know a cache exists, let
+alone which technology backs which entity. Those two constants are also
+deployment decisions with nothing to do with a repository's own code:
+`BARE_METAL` keeps the cache in-process — nothing shared, nothing
+reachable over the network, right for a single instance or an agent
+running locally; `REDIS` with `CacheEnv.REMOTE` makes it a cache every
+node/replica actually shares (they all point at the same `REDIS_URL`),
+and since that's an environment variable, relocating it to a different
+cloud account, region, or a network-isolated instance for security
+reasons is a config change, not a code change.
 
 ## One standardized response, read two ways
 

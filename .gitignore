@@ -11,6 +11,7 @@ build/
 .coverage
 htmlcov/
 .DS_Store
-logs/
+.logs/
 *.db
 *.db-journal
+.focusari/

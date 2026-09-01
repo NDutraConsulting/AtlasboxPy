@@ -24,8 +24,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Literal, ParamSpec
 
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.exc import TimeoutError as SATimeoutError
+from atlasboxpy_db import StorageConflict, StorageTimeout, StorageUnavailable
 
 ResultType = Literal["object", "array", "map"]
 
@@ -84,19 +83,25 @@ def translate_db_errors(
     fn: Callable[P, Awaitable[ServiceResult]],
 ) -> Callable[P, Awaitable[ServiceResult]]:
     """Wraps a service method so any real database failure — a simulated
-    one (see db_simulation.py) or a genuine one in production — comes back
-    as a ServiceResult instead of an uncaught exception. Lives here (not
-    in db_simulation.py) because it builds ServiceResults, a services/-only
-    concept; db_simulation.py itself is a sibling of db.py specifically so
-    repositories/ can depend on it without depending on services/."""
+    one (see infrastructure/database/db_connections/db_simulation.py) or
+    a genuine one in production — comes back as a ServiceResult instead
+    of an uncaught exception. Catches atlasboxpy_db's own backend-neutral
+    exceptions, not a SQLAlchemy-specific one — this module has no idea
+    which backend (or how many, across entities) is actually involved.
+    Lives here (not in db_simulation.py) because it builds ServiceResults,
+    a services/-only concept; db_simulation.py itself lives in
+    infrastructure/database/ specifically so the storage layer can depend
+    on it without depending on services/."""
 
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> ServiceResult:
         try:
             return await fn(*args, **kwargs)
-        except SATimeoutError as exc:
+        except StorageTimeout as exc:
             return ServiceResult.timeout(str(exc))
-        except OperationalError as exc:
+        except StorageUnavailable as exc:
             return ServiceResult.error(str(exc), code="upstream_error")
+        except StorageConflict as exc:
+            return ServiceResult.error(str(exc), code="conflict")
 
     return wrapper

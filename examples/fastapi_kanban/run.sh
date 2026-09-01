@@ -26,17 +26,27 @@ if ! python3 -c "import fastapi, sqlalchemy, aiosqlite, greenlet, atlasboxpy_con
   pip install -q -e "$REPO_ROOT/packages/atlasboxpy_controller[dev]"
 fi
 
-# The repository layer (KanbanRepository) is built on atlasboxpy_repository,
-# a separate package (packages/atlasboxpy_repository/) — not part of the
-# atlasboxpy_controller distribution.
+# The repository layer (BoardRepository/ColumnRepository/CardRepository)
+# is built on atlasboxpy_repository, a separate package
+# (packages/atlasboxpy_repository/) — not part of the atlasboxpy_controller
+# distribution.
 if ! python3 -c "import atlasboxpy_repository" >/dev/null 2>&1; then
   echo "Installing atlasboxpy_repository into $VENV_DIR..."
   pip install -q -e "$REPO_ROOT/packages/atlasboxpy_repository"
 fi
 
-# uvicorn needs `examples.fastapi_kanban.main:app` to be importable, which
-# requires the repo root (not this script's own directory) on sys.path.
+# The database connection layer (DBQuantum/ShardRouter/DBQuantumRegistry)
+# is built on atlasboxpy_db, another separate package
+# (packages/atlasboxpy_db/).
+if ! python3 -c "import atlasboxpy_db" >/dev/null 2>&1; then
+  echo "Installing atlasboxpy_db into $VENV_DIR..."
+  pip install -q -e "$REPO_ROOT/packages/atlasboxpy_db"
+fi
+
+# uvicorn needs `examples.fastapi_kanban.app.backend.main:app` to be
+# importable, which requires the repo root (not this script's own
+# directory) on sys.path.
 cd "$REPO_ROOT"
 
 echo "Starting Kanban demo at http://127.0.0.1:$PORT/"
-exec uvicorn examples.fastapi_kanban.main:app --reload --port "$PORT"
+exec uvicorn examples.fastapi_kanban.app.backend.main:app --reload --port "$PORT"
