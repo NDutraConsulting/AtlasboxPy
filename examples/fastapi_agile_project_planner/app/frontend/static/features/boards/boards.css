@@ -1,0 +1,61 @@
+/* "boards" feature: the boards list page. */
+
+.board-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.board-form input {
+  flex: 1;
+  max-width: 320px;
+}
+
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.board-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.board-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.board-card .board-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.board-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.board-card-actions .open-btn {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.board-card-actions .open-btn:hover {
+  background: var(--accent-hover);
+}
+
+.board-card-actions .delete-btn {
+  color: var(--danger);
+}

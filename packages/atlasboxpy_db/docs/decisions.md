@@ -21,10 +21,21 @@ Configuring a database connection, or thinking about sharding?
 │         (PYTHONHASHSEED); the same key would route to a different
 │         shard after every restart. Use ShardRouter's stable hash.
 │
-└─ Tempted to construct one DBQuantumRegistry at import time and share
-   it across your whole app/test suite?
-     └─→ ADR-3: don't — construct one per app/process instance instead;
-          that's what gives a test suite isolated engines for free.
+├─ Tempted to construct one DBQuantumRegistry at import time and share
+│  it across your whole app/test suite?
+│    └─→ ADR-3: don't — construct one per app/process instance instead;
+│         that's what gives a test suite isolated engines for free.
+│
+└─ Need to pick between a small set of semantically DIFFERENT databases
+   (the real one vs. a shadow database seeded with test data, say) —
+   tempted to reach for ShardRouter with a fixed key per variant?
+     └─→ ADR-4: don't — use VariantRouter instead. ShardRouter hash-
+          buckets a key across INTERCHANGEABLE shards of the same
+          dataset; a config change (adding a shard) can silently remap
+          which shard a key lands on. VariantRouter never buckets: a
+          label matches a registered variant exactly, or falls back to
+          `default` — there's no scenario where it lands on the wrong
+          database.
 ```
 
 ---
@@ -135,3 +146,57 @@ process-shared-state convention, as `atlasboxpy_db`'s example app does).
 | Portability | A registry has no hidden dependency on "the one process-wide instance" existing — it's just an object, testable and constructible anywhere, including multiple at once in the same process if that's ever useful. | — |
 | Debuggability | Test isolation is a structural consequence of "who constructs the registry and when," not a convention every test has to remember to uphold — a whole class of "test 2 saw test 1's cached connection" bugs simply can't happen. | A caller does have to actually construct and pass the registry somewhere — one explicit step a singleton would have hidden. |
 | Evolvability | An app can run multiple independent registries side by side (say, one per tenant) without this package needing to know that's happening. | — |
+
+---
+
+## ADR-4: `VariantRouter` is a separate type from `ShardRouter`, not a reused one
+
+**Context.** A real use case for this package: routing a request to one
+of a small set of *semantically different* databases based on an
+untrusted label — e.g. a REST header selecting between the real database
+and a shadow database seeded with test data, for validating a vertical
+slice of logic against real code paths right after a deploy without
+touching production data. `ShardRouter` already routes a string key to
+one of N targets — the obvious first reach is to reuse it, giving the
+label as the shard key.
+
+**Decision.** `VariantRouter[T]` is a distinct type: a plain exact-match
+lookup (`variants: dict[str, T]`) with a required `default`, not a hash
+bucket. `resolve(label)` returns `variants[label]` if `label` matches a
+registered name exactly, otherwise `default` — always, including for
+`None`, an empty string, or any string that isn't a registered variant
+name. There is no hashing, no modulo, and no scenario where an
+unrecognized label lands on anything but `default`.
+
+**Alternatives considered**
+- Reusing `ShardRouter`, treating each variant name as a distinct
+  "shard" — rejected: `ShardRouter.shard_for(key)` hash-buckets `key`
+  across `len(shards)` targets, and which shard a given key lands on
+  depends on the *shard count*. Add a third variant later (a "staging"
+  target, say) and every existing key's bucket index can shift — for a
+  shard-routed dataset that's an accepted, documented trade-off (ADR-1/2
+  in this file); for semantically different databases, it means a
+  routing-table change could silently start sending "shadow"-labeled
+  traffic at "prod" (or the reverse) with no code change at the call
+  site to blame. A hash-based router is the wrong abstraction for
+  "exactly this label, or the safe default" — it optimizes for spreading
+  load evenly, a property nobody wants here.
+- A `VariantRouter` that raises on an unrecognized label instead of
+  falling back to `default` — rejected for this use case: the label
+  is untrusted end-to-end (typically a REST header — see
+  `atlasboxpy_api`), and a malformed or unexpected value must never be
+  able to turn into an error path that's easier to probe than the
+  default one; falling back silently to the known-safe default is the
+  conservative choice. A caller that wants to *know* whether the label
+  actually matched (for logging) has `resolved_label()` for that,
+  separately from `resolve()`'s value.
+- Chosen: a new type, exact-match only, safe-by-construction fallback.
+
+**Consequences**
+
+| | Pros | Cons |
+|---|---|---|
+| Performance | A dict lookup, not a hash-and-modulo over a digest — marginally cheaper than `ShardRouter`, though neither cost is meaningful next to an actual DB round trip. | — |
+| Portability | Generic over `T`, same as `ShardRouter` — works for a `DBQuantum`, a `ShardRouter[DBQuantum]` (picking between a prod router and a shadow router, each of which can still have its own shard count), or anything else with a small, named set of alternatives. | Two very similarly-named types (`ShardRouter`/`VariantRouter`) in one package is a real cost — a developer has to know which one applies (see the map at the top of this file) rather than there being one router type for everything. |
+| Debuggability | `resolved_label()` tells a caller exactly which variant served a given request — "default" or the matched name — for logging, without re-implementing the match. | — |
+| Evolvability | Adding a new variant is one new dict entry — existing labels' resolution never changes as a side effect, unlike `ShardRouter`'s shard-count-dependent bucketing. | `VariantRouter` intentionally has no `all_variants()`/enumeration helper the way `ShardRouter.all_shards()` does — the point is that a caller never routes to anything it didn't explicitly ask for by exact label, not that every registered variant is discoverable at runtime. |

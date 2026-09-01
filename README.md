@@ -21,6 +21,31 @@ related packages, not PEP 420 namespace packages).
   `ShardRouter` for SQLAlchemy: a single physical database is just a
   `ShardRouter` with one shard, not a separate type from a sharded one —
   going to N databases later is a config change, not a migration.
+  Also has `VariantRouter`, for picking between a small set of
+  semantically *different* databases (a shadow DB seeded with test data
+  for post-deploy validation, say) by an exact label — deliberately not
+  the same mechanism as sharding (see `atlasboxpy_db`'s own ADR-4).
+- [`packages/atlasboxpy_api/`](packages/atlasboxpy_api/) — a
+  framework-agnostic ASGI middleware that resolves one HTTP header into
+  request-scoped context (`ContextVar`-backed, not a global — no
+  leaking between concurrent requests), for things like routing a
+  single request to a shadow database via a header without touching a
+  process-wide toggle. Pairs with `atlasboxpy_db`'s `VariantRouter` for
+  the actual "which database" decision; this package only ever moves a
+  header's raw value into request scope.
+- [`packages/atlasboxpy_service/`](packages/atlasboxpy_service/) — a
+  `BaseService` base class for the layer that orchestrates repositories
+  and third-party/internal-service calls on a controller's behalf: the
+  same auto-wrapping mechanism as `BaseController`, but logging every
+  call's entry *and* outcome (not just failures), plus `gather_named`, a
+  reusable named-concurrent-call helper.
+- [`packages/atlasboxpy_telemetry/`](packages/atlasboxpy_telemetry/) —
+  real (log-based, no external backend required) trace propagation: a
+  trace id and parent/child spans threaded through a request via
+  `atlasboxpy_api`'s request-scoped context, toggleable by a
+  process-wide config default and a per-request header override — enable
+  a fully traced call chain for one specific post-prod request, with no
+  redeploy.
 
 ## Which one do I need?
 
@@ -47,21 +72,52 @@ Building something that talks to a database and might need caching?
              examples/fastapi_kanban for the full stack.
 ```
 
+`atlasboxpy_api`, `atlasboxpy_service`, and `atlasboxpy_telemetry` aren't
+part of that core three — each is a narrower add-on for a specific need
+(request-scoped header context; service-layer logging and concurrent
+orchestration; trace propagation) that a real app reaches for once the
+core three are already in place, not before. `atlasboxpy_telemetry`
+depends on `atlasboxpy_api` directly (the one exception to every package
+here being an independent sibling — see `atlasboxpy_telemetry`'s own
+ADR-1 for why); every other package has zero required dependency on
+another package in this workspace.
+
 Each package's own `docs/decisions.md` has the full ADRs — what was
 considered and rejected for its non-obvious choices, with
 performance/portability/debuggability/evolvability trade-offs for each:
 [`atlasboxpy_controller`](packages/atlasboxpy_controller/docs/decisions.md) ·
 [`atlasboxpy_repository`](packages/atlasboxpy_repository/docs/decisions.md) ·
 [`atlasboxpy_db`](packages/atlasboxpy_db/docs/decisions.md) ·
+[`atlasboxpy_api`](packages/atlasboxpy_api/docs/decisions.md) ·
+[`atlasboxpy_service`](packages/atlasboxpy_service/docs/decisions.md) ·
+[`atlasboxpy_telemetry`](packages/atlasboxpy_telemetry/docs/decisions.md) ·
 [`examples/fastapi_kanban`](examples/fastapi_kanban/docs/decisions.md) (the
-Entity-Type Storage pattern, tying all three together — see below).
+Entity-Type Storage pattern, tying the core three packages together —
+see below) ·
+[`examples/fastapi_agile_project_planner`](examples/fastapi_agile_project_planner/docs/decisions.md)
+(everything `fastapi_kanban` has, plus multi-service orchestration,
+service-layer logging, and trace propagation — see below).
 
 ## Examples
 
-[`examples/`](examples/) has runnable demo apps exercising both packages
-together — see `examples/fastapi_kanban` for the fullest one (Starlette +
-SQLite, real cache invalidation via `atlasboxpy_repository`, consistent
-error handling via `atlasboxpy_controller`).
+[`examples/`](examples/) has runnable demo apps exercising these packages
+together.
+
+- **`examples/fastapi_kanban`** — the focused demo of the core three
+  (Starlette + SQLite, real cache invalidation via
+  `atlasboxpy_repository`, consistent error handling via
+  `atlasboxpy_controller`). Stays as-is; the sections below walk through
+  it in detail.
+- **`examples/fastapi_agile_project_planner`** — starts as the same app
+  (literally a copy, at the point it was branched) plus
+  `atlasboxpy_service`/`atlasboxpy_telemetry`/`atlasboxpy_api` wired in,
+  and is where this workspace's project-planning and AI-agent-adjacent
+  features actually grow over time — see its own
+  [`docs/decisions.md`](examples/fastapi_agile_project_planner/docs/decisions.md)
+  for `KanbanController.find_related_tasks_by_card`, the worked example
+  of a controller orchestrating *three* services
+  (`UserSessionService`/`KanbanService`/`TaskAgentService`), each owning
+  one bounded concern and never calling each other directly.
 
 ### Kanban controller (`atlasboxpy_controller`)
 

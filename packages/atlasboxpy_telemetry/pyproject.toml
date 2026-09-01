@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlasboxpy_telemetry"
+version = "0.1.0"
+description = "Real (log-based, no external backend required) trace propagation: a trace id and parent/child spans threaded through a request via atlasboxpy_api's request-scoped context, toggleable by process config or a per-request header override."
+readme = "README.md"
+authors = [
+    {name = "Nikko Dutra", email = "ndutra.consulting@gmail.com"},
+    {name = "NDutra Consulting"},
+]
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "atlasboxpy_api",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff", "mypy"]
+
+[project.urls]
+Homepage = "https://github.com/TODO/atlasboxpy_telemetry"
+Repository = "https://github.com/TODO/atlasboxpy_telemetry"
+Issues = "https://github.com/TODO/atlasboxpy_telemetry/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atlasboxpy_telemetry"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+exclude = ["tests/"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

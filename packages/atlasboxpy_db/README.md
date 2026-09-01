@@ -54,6 +54,28 @@ BOARD_DB_QUANTUM = ShardRouter(
 sessions = registry.sessions(BOARD_DB_QUANTUM, shard_key=board_id)
 ```
 
+Picking between a small set of *semantically different* databases (not
+shards of the same one) — a shadow database seeded with test data for
+post-deploy validation, say — is `VariantRouter`, not `ShardRouter`: it
+never buckets or hashes, so an unrecognized or malformed label can never
+land anywhere but the safe default:
+
+```python
+from atlasboxpy_db import VariantRouter
+
+KANBAN_ENVIRONMENTS = VariantRouter(
+    name="kanban",
+    default=KANBAN_DB_QUANTUM,          # the ShardRouter declared above
+    variants={"shadow": KANBAN_SHADOW_DB_QUANTUM},
+)
+
+# label is untrusted input end to end — e.g. a REST header, resolved by
+# atlasboxpy_api's request-context middleware — never a value the caller
+# constructed itself.
+router = KANBAN_ENVIRONMENTS.resolve(label)
+sessions = registry.sessions(router)
+```
+
 ## What this package does and doesn't do
 
 - **Does:** resolve a `DBQuantum` (or, via `ShardRouter`, one of several)
@@ -80,7 +102,9 @@ sessions = registry.sessions(BOARD_DB_QUANTUM, shard_key=board_id)
   choices (ShardRouter as the base case instead of a bolted-on
   "sharded" variant, a stable hash instead of Python's built-in `hash()`,
   the registry being constructed fresh per app instance rather than a
-  module-level singleton), each with alternatives considered and
+  module-level singleton, VariantRouter as a separate type from
+  ShardRouter for exact-match environment selection), each with
+  alternatives considered and
   performance/portability/debuggability/evolvability trade-offs.
 
 ## License

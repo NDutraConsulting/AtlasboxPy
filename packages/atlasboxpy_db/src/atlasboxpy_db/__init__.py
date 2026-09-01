@@ -8,6 +8,7 @@ from atlasboxpy_db.errors import (
 )
 from atlasboxpy_db.quantum_registry import DBQuantumRegistry, SessionOpener, session_scope
 from atlasboxpy_db.shard_router import ShardRouter
+from atlasboxpy_db.variant_router import VariantRouter
 
 __all__ = [
     "DBDriver",
@@ -21,5 +22,6 @@ __all__ = [
     "StorageTimeout",
     "StorageUnavailable",
     "UnsupportedBackendError",
+    "VariantRouter",
     "session_scope",
 ]

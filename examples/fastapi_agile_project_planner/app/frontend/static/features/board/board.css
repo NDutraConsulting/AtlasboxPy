@@ -1,0 +1,126 @@
+/* "board" feature: the single-board kanban view. */
+
+.add-column-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.columns {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.column {
+  background: #ebecf0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  width: 260px;
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.column-header h2 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.column-delete {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0.1rem 0.4rem;
+}
+
+.column-delete:hover {
+  color: var(--danger);
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 1rem;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 0.6rem 0.7rem;
+  box-shadow: 0 1px 0 rgba(9, 30, 66, 0.25);
+}
+
+.card h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+.card p {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.card-controls {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.card-controls button {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.add-card-btn {
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: var(--text-muted);
+}
+
+.add-card-btn:hover {
+  color: var(--accent);
+}
+
+dialog {
+  border: none;
+  border-radius: 6px;
+  padding: 1.25rem;
+  min-width: 320px;
+}
+
+dialog::backdrop {
+  background: rgba(9, 30, 66, 0.54);
+}
+
+dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+dialog menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}

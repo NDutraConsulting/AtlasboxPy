@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlasboxpy_service"
+version = "0.1.0"
+description = "BaseService: a base class that auto-logs every method call (success and failure) and gives services a named concurrent-call helper, for the layer that orchestrates repositories and third-party/internal services on behalf of a controller."
+readme = "README.md"
+authors = [
+    {name = "Nikko Dutra", email = "ndutra.consulting@gmail.com"},
+    {name = "NDutra Consulting"},
+]
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff", "mypy"]
+
+[project.urls]
+Homepage = "https://github.com/TODO/atlasboxpy_service"
+Repository = "https://github.com/TODO/atlasboxpy_service"
+Issues = "https://github.com/TODO/atlasboxpy_service/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atlasboxpy_service"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+exclude = ["tests/"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

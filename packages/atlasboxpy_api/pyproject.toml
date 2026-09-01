@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlasboxpy_api"
+version = "0.1.0"
+description = "A framework-agnostic ASGI middleware that resolves one HTTP header into request-scoped context — for things like routing a request to a shadow database, safely and without a global toggle."
+readme = "README.md"
+authors = [
+    {name = "Nikko Dutra", email = "ndutra.consulting@gmail.com"},
+    {name = "NDutra Consulting"},
+]
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff", "mypy", "starlette", "httpx"]
+
+[project.urls]
+Homepage = "https://github.com/TODO/atlasboxpy_api"
+Repository = "https://github.com/TODO/atlasboxpy_api"
+Issues = "https://github.com/TODO/atlasboxpy_api/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atlasboxpy_api"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+exclude = ["tests/"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

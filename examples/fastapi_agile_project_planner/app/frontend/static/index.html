@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kanban — Boards</title>
+    <link rel="stylesheet" href="/features/shared/base.css" />
+    <link rel="stylesheet" href="/features/boards/boards.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Kanban Boards</h1>
+    </header>
+    <main>
+      <form id="create-board-form" class="board-form">
+        <input type="text" name="name" placeholder="New board name" required />
+        <button type="submit">Create board</button>
+      </form>
+      <p id="boards-error" class="error" hidden></p>
+      <ul id="board-list" class="board-list"></ul>
+    </main>
+    <script type="module" src="/features/boards/boards-controller.js"></script>
+  </body>
+</html>
