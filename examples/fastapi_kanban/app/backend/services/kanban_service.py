@@ -75,12 +75,11 @@ class KanbanService:
             return ServiceResult.error("Board name must not be empty", code="validation_failed")
         board_id = str(uuid.uuid4())
         await self._boards.create(board_id, name)
-        await asyncio.gather(
-            *(
-                self._columns.create(board_id, col_name, position)
-                for position, col_name in enumerate(DEFAULT_COLUMNS)
-            )
-        )
+        # Sequential on purpose: each create is its own write session, and
+        # concurrent write sessions sharing one connection (the in-memory
+        # test engine's StaticPool) lose inserts under SQLAlchemy 2.1.
+        for position, col_name in enumerate(DEFAULT_COLUMNS):
+            await self._columns.create(board_id, col_name, position)
         return await self.get_board(board_id)
 
     @translate_db_errors

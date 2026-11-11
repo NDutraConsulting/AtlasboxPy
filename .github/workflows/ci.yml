@@ -72,11 +72,41 @@ jobs:
       - name: Test
         run: pytest
 
+  test-other-packages:
+    # api, db, service and telemetry each have the same lint/type/test
+    # shape, so one matrix job covers them. telemetry depends on api, so
+    # api is installed first for every entry (harmless for the others).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [api, db, service, telemetry]
+        python-version: ["3.10", "3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: packages/atlasboxpy_${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install sibling dependency (atlasboxpy_api)
+        if: matrix.package == 'telemetry'
+        run: pip install -e "../atlasboxpy_api"
+      - name: Install package
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Type check
+        run: mypy src/
+      - name: Test
+        run: pytest
+
   test-examples:
-    # Demo apps under examples/ exercise both packages together — this is
+    # Demo apps under examples/ exercise all of the packages together — this is
     # workspace-level integration content, not part of either package's
     # own distribution, so it gets its own job rather than living inside
-    # either package-specific one above.
+    # any package-specific one above.
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -90,5 +120,13 @@ jobs:
         run: pip install -e "packages/atlasboxpy_controller[dev]"
       - name: Install atlasboxpy_repository
         run: pip install -e "packages/atlasboxpy_repository[dev]"
+      - name: Install atlasboxpy_db
+        run: pip install -e "packages/atlasboxpy_db[dev]"
+      - name: Install atlasboxpy_api
+        run: pip install -e "packages/atlasboxpy_api[dev]"
+      - name: Install atlasboxpy_service
+        run: pip install -e "packages/atlasboxpy_service[dev]"
+      - name: Install atlasboxpy_telemetry
+        run: pip install -e "packages/atlasboxpy_telemetry[dev]"
       - name: Example demo projects (P12)
         run: pytest examples/ -v
